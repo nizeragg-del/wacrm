@@ -504,7 +504,7 @@ async function evaluateConditionNode(
   let subjectValue: string | undefined;
   if (cfg.subject === "var") {
     const v = run.vars[cfg.subject_key];
-    subjectValue = typeof v === "string" ? v : v === undefined ? undefined : String(v);
+    subjectValue = v === null || v === undefined ? undefined : typeof v === "string" ? v : String(v);
   } else if (cfg.subject === "tag") {
     const { count } = await db
       .from("contact_tags")
