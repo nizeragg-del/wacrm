@@ -17,15 +17,6 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 
-/**
- * Deals settings — account-wide default currency.
- *
- * One currency per account (issue #218): the chosen code seeds new
- * deals and formats every aggregated total. Existing deals keep their
- * own saved currency. Writes go straight to `accounts.default_currency`;
- * the `accounts_update` RLS policy (017) already restricts that to
- * admins+, so non-admins see a disabled, read-only control.
- */
 export function DealsSettings() {
   const supabase = createClient();
   const {
@@ -39,8 +30,6 @@ export function DealsSettings() {
   const [selected, setSelected] = useState(defaultCurrency);
   const [saving, setSaving] = useState(false);
 
-  // Keep the select in sync once the profile (and its account default)
-  // resolves, and after a save round-trips through refreshProfile.
   useEffect(() => {
     setSelected(defaultCurrency);
   }, [defaultCurrency]);
@@ -55,15 +44,13 @@ export function DealsSettings() {
       .update({ default_currency: selected })
       .eq("id", accountId);
     if (error) {
-      toast.error("Failed to save default currency");
+      toast.error("Falha ao salvar moeda padrão");
       setSaving(false);
       return;
     }
-    // Pull the new value back into the auth context so the deal form
-    // and every total pick it up without a full reload.
     await refreshProfile();
     setSaving(false);
-    toast.success("Default currency updated");
+    toast.success("Moeda padrão atualizada");
   }
 
   return (
@@ -72,17 +59,17 @@ export function DealsSettings() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-white">
             <Coins className="size-4 text-primary" />
-            Default currency
+            Moeda padrão
           </CardTitle>
           <CardDescription className="text-slate-400">
-            New deals default to this currency, and pipeline and
-            dashboard totals are shown in it. Existing deals keep the
-            currency they were saved with.
+            Novos negócios usam esta moeda por padrão, e os totais do pipeline e
+            do painel são exibidos nela. Negócios existentes mantêm a
+            moeda com a qual foram salvos.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2 sm:max-w-xs">
-            <Label className="text-slate-300">Currency</Label>
+            <Label className="text-slate-300">Moeda</Label>
             <select
               value={selected}
               onChange={(e) => setSelected(e.target.value)}
@@ -97,7 +84,7 @@ export function DealsSettings() {
             </select>
             {!canEditSettings && (
               <p className="text-xs text-slate-500">
-                Only account admins can change the default currency.
+                Apenas administradores da conta podem alterar a moeda padrão.
               </p>
             )}
           </div>
@@ -111,10 +98,10 @@ export function DealsSettings() {
               {saving ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Saving...
+                  Salvando...
                 </>
               ) : (
-                "Save"
+                "Salvar"
               )}
             </Button>
           )}

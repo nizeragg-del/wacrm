@@ -17,17 +17,22 @@
  */
 
 import {
+  CreditCard,
   Flag,
   GitFork,
+  Globe,
   Inbox,
   ListChecks,
   ListPlus,
   MessageCircle,
   Paperclip,
   PlayCircle,
+  RefreshCw,
   Tag,
+  Timer,
   UserPlus,
   Workflow,
+  Search,
 } from "lucide-react";
 
 // ============================================================
@@ -48,7 +53,12 @@ export type NodeType =
   | "condition"
   | "set_tag"
   | "handoff"
-  | "end";
+  | "end"
+  | "generate_website"
+  | "create_payment"
+  | "website_order_check"
+  | "schedule_reminder"
+  | "auto_confirm_payment";
 
 export interface BuilderNode {
   node_key: string;
@@ -69,48 +79,73 @@ export const NODE_META: Record<
   NodeType,
   { label: string; icon: typeof Workflow; color: string }
 > = {
-  start: { label: "Start", icon: PlayCircle, color: "text-emerald-400" },
+  start: { label: "Início", icon: PlayCircle, color: "text-emerald-400" },
   send_message: {
-    label: "Send message",
+    label: "Enviar mensagem",
     icon: MessageCircle,
     color: "text-sky-400",
   },
   send_buttons: {
-    label: "Send buttons",
+    label: "Enviar botões",
     icon: ListChecks,
     color: "text-primary",
   },
   send_list: {
-    label: "Send list",
+    label: "Enviar lista",
     icon: ListPlus,
     color: "text-indigo-400",
   },
   send_media: {
-    label: "Send media",
+    label: "Enviar mídia",
     icon: Paperclip,
     color: "text-cyan-400",
   },
   collect_input: {
-    label: "Collect input",
+    label: "Coletar entrada",
     icon: Inbox,
     color: "text-teal-400",
   },
   condition: {
-    label: "If / else",
+    label: "Se / então",
     icon: GitFork,
     color: "text-fuchsia-400",
   },
   set_tag: {
-    label: "Tag contact",
+    label: "Taggar contato",
     icon: Tag,
     color: "text-pink-400",
   },
   handoff: {
-    label: "Handoff to agent",
+    label: "Transferir para atendente",
     icon: UserPlus,
     color: "text-amber-400",
   },
-  end: { label: "End", icon: Flag, color: "text-slate-400" },
+  end: { label: "Fim", icon: Flag, color: "text-slate-400" },
+  generate_website: {
+    label: "Gerar site",
+    icon: Globe,
+    color: "text-violet-400",
+  },
+  create_payment: {
+    label: "Criar pagamento",
+    icon: CreditCard,
+    color: "text-green-400",
+  },
+  website_order_check: {
+    label: "Verificar pedido do site",
+    icon: Search,
+    color: "text-cyan-400",
+  },
+  schedule_reminder: {
+    label: "Agendar lembrete",
+    icon: Timer,
+    color: "text-orange-400",
+  },
+  auto_confirm_payment: {
+    label: "Confirmar pagamento automaticamente",
+    icon: RefreshCw,
+    color: "text-lime-400",
+  },
 };
 
 // ============================================================
@@ -180,11 +215,11 @@ export function summarizeNode(node: BuilderNode): string | null {
       }, 0);
       if (text.length > 0) {
         return rowCount > 0
-          ? `${truncate(text, 50)} · ${rowCount} option${rowCount === 1 ? "" : "s"}`
+          ? `${truncate(text, 50)} · ${rowCount} opção${rowCount === 1 ? "" : "ões"}`
           : truncate(text);
       }
       return rowCount > 0
-        ? `${rowCount} option${rowCount === 1 ? "" : "s"} across ${sections.length} section${sections.length === 1 ? "" : "s"}`
+        ? `${rowCount} opção${rowCount === 1 ? "" : "ões"} em ${sections.length} seção${sections.length === 1 ? "" : "ões"}`
         : null;
     }
     case "send_media": {
@@ -195,8 +230,8 @@ export function summarizeNode(node: BuilderNode): string | null {
       const caption = typeof cfg.caption === "string" ? cfg.caption : "";
       const label = mediaType
         ? mediaType.charAt(0).toUpperCase() + mediaType.slice(1)
-        : "Media";
-      if (!url) return `${label} (no file uploaded)`;
+        : "Mídia";
+      if (!url) return `${label} (nenhum arquivo enviado)`;
       const name = filename || url.split("/").pop() || "file";
       return caption
         ? `${label}: ${truncate(name, 30)} · ${truncate(caption, 40)}`
@@ -221,7 +256,7 @@ export function summarizeNode(node: BuilderNode): string | null {
             ? "field"
             : "var";
       const subjectStr =
-        subject === "tag" ? `has tag ${truncate(subjectKey, 24)}` : `${subject}.${subjectKey}`;
+        subject === "tag" ? `tem tag ${truncate(subjectKey, 24)}` : `${subject}.${subjectKey}`;
       const op =
         cfg.operator === "equals"
           ? "=="
@@ -240,16 +275,45 @@ export function summarizeNode(node: BuilderNode): string | null {
       return subject === "tag" ? subjectStr : `${subjectStr} ${op}${valStr}`;
     }
     case "set_tag": {
-      const mode = cfg.mode === "remove" ? "Remove" : "Add";
+      const mode = cfg.mode === "remove" ? "Remover" : "Adicionar";
       const tagId = typeof cfg.tag_id === "string" ? cfg.tag_id : "";
       // No tag name available without an async lookup here; show a
       // short prefix of the UUID so users can disambiguate between
       // multiple set_tag nodes at a glance.
-      return tagId ? `${mode} tag ${tagId.slice(0, 8)}…` : `${mode} tag (none picked)`;
+      return tagId ? `${mode} tag ${tagId.slice(0, 8)}…` : `${mode} tag (nenhum selecionado)`;
     }
     case "handoff": {
       const note = typeof cfg.note === "string" ? cfg.note : "";
       return note.length > 0 ? truncate(note) : null;
+    }
+    case "generate_website": {
+      const specs = cfg.specs as Record<string, unknown> | undefined;
+      const template =
+        typeof cfg.template_type === "string" ? cfg.template_type : "";
+      const empresa =
+        specs && typeof specs.empresa_nome_var === "string"
+          ? `→ vars.${specs.empresa_nome_var}`
+          : "";
+      return empresa ? `${template} ${empresa}` : template || "Gerar site";
+    }
+    case "create_payment": {
+      const value =
+        typeof cfg.payment_value === "number"
+          ? `R$ ${cfg.payment_value.toFixed(2)}`
+          : "";
+      return value ? `PIX ${value}` : "Criar pagamento";
+    }
+    case "website_order_check": {
+      const orderVar = typeof cfg.order_var === "string" ? cfg.order_var : "";
+      return orderVar ? `Carregar pedido → vars.${orderVar}` : "Verificar pedido do site";
+    }
+    case "schedule_reminder": {
+      const delay = typeof cfg.delay_minutes === "number" ? cfg.delay_minutes : 0;
+      return `Lembrar em ${delay}min`;
+    }
+    case "auto_confirm_payment": {
+      const delay = typeof cfg.delay_seconds === "number" ? cfg.delay_seconds : 5;
+      return `Auto-confirmar em ${delay}s`;
     }
   }
 }

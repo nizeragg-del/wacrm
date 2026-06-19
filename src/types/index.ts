@@ -224,6 +224,8 @@ export interface WhatsAppConfig {
   subscribed_apps_at?: string;
   /** Last error from /register; cleared on success. */
   last_registration_error?: string;
+  /** Whether the AI agent is enabled for auto-replying to inbound messages. */
+  ai_agent_enabled?: boolean;
 }
 
 // Raw Meta status enum. We persist this verbatim from Meta (sync + webhook)

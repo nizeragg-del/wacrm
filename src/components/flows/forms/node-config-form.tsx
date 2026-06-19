@@ -71,7 +71,7 @@ export function NodeConfigForm({
           allNodes={allNodes}
           currentKey={node.node_key}
           onChange={(v) => onUpdateConfig({ next_node_key: v })}
-          label="Advances to"
+          label="Avança para"
         />
       );
 
@@ -79,7 +79,7 @@ export function NodeConfigForm({
       return (
         <>
           <TextRow
-            label="Text sent to the customer"
+            label="Texto enviado ao cliente"
             value={(cfg as { text?: string }).text ?? ""}
             onChange={(v) => onUpdateConfig({ text: v })}
           />
@@ -88,7 +88,7 @@ export function NodeConfigForm({
             allNodes={allNodes}
             currentKey={node.node_key}
             onChange={(v) => onUpdateConfig({ next_node_key: v })}
-            label="Advances to"
+            label="Avança para"
           />
         </>
       );
@@ -129,14 +129,14 @@ export function NodeConfigForm({
       return (
         <>
           <TextRow
-            label="Prompt sent to the customer"
+            label="Prompt enviado ao cliente"
             value={(cfg as { prompt_text?: string }).prompt_text ?? ""}
             onChange={(v) => onUpdateConfig({ prompt_text: v })}
             rows={2}
           />
           <div>
             <label className="mb-1 block text-xs text-slate-400">
-              Variable key (stored in flow_runs.vars; alphanumeric + underscore)
+              Chave da variável (armazenada em flow_runs.vars; alfanumérico + underscore)
             </label>
             <Input
               value={(cfg as { var_key?: string }).var_key ?? ""}
@@ -145,11 +145,11 @@ export function NodeConfigForm({
                   var_key: e.target.value.replace(/[^a-zA-Z0-9_]/g, ""),
                 })
               }
-              placeholder="e.g. name, email, company"
+              placeholder="ex: nome, email, empresa"
               className="bg-slate-800 font-mono text-xs"
             />
             <p className="mt-1 text-[10px] text-slate-500">
-              Interpolate in downstream prompts and handoff notes with{" "}
+              Interpole em prompts e notas de transferência com{" "}
               <code className="rounded bg-slate-800 px-1">
                 {"{{vars."}
                 {(cfg as { var_key?: string }).var_key || "name"}
@@ -163,7 +163,7 @@ export function NodeConfigForm({
             allNodes={allNodes}
             currentKey={node.node_key}
             onChange={(v) => onUpdateConfig({ next_node_key: v })}
-            label="After capturing, advance to"
+            label="Após capturar, avança para"
           />
         </>
       );
@@ -191,7 +191,7 @@ export function NodeConfigForm({
     case "handoff":
       return (
         <TextRow
-          label="Internal note (for the agent picking up)"
+          label="Nota interna (para o atendente que vai assumir)"
           value={(cfg as { note?: string }).note ?? ""}
           onChange={(v) => onUpdateConfig({ note: v })}
           rows={2}
@@ -201,9 +201,95 @@ export function NodeConfigForm({
     case "end":
       return (
         <p className="text-xs text-slate-500">
-          Terminal node. When the runner reaches this node the run is marked
-          complete. No config needed.
+          Node terminal. Quando o executor atinge este node, a execução é marcada
+          como concluída. Nenhuma configuração necessária.
         </p>
+      );
+
+    case "website_order_check":
+      return (
+        <>
+          <TextRow
+            label="Chave da variável para armazenar o objeto do pedido"
+            value={(cfg as { order_var?: string }).order_var ?? ""}
+            onChange={(v) => onUpdateConfig({ order_var: v })}
+          />
+          <NextNodeRow
+            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
+            allNodes={allNodes}
+            currentKey={node.node_key}
+            onChange={(v) => onUpdateConfig({ next_node_key: v })}
+            label="Avança para"
+          />
+        </>
+      );
+
+    case "schedule_reminder":
+      return (
+        <>
+          <TextRow
+            label="Variável do ID do pedido"
+            value={(cfg as { order_id_var?: string }).order_id_var ?? ""}
+            onChange={(v) => onUpdateConfig({ order_id_var: v })}
+          />
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">
+              Atraso (minutos)
+            </label>
+            <Input
+              type="number"
+              value={(cfg as { delay_minutes?: number }).delay_minutes ?? 30}
+              onChange={(e) =>
+                onUpdateConfig({ delay_minutes: parseInt(e.target.value) || 30 })
+              }
+              className="bg-slate-800"
+            />
+          </div>
+          <TextRow
+            label="Modelo de mensagem"
+            value={(cfg as { message_template?: string }).message_template ?? ""}
+            onChange={(v) => onUpdateConfig({ message_template: v })}
+            rows={2}
+          />
+          <NextNodeRow
+            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
+            allNodes={allNodes}
+            currentKey={node.node_key}
+            onChange={(v) => onUpdateConfig({ next_node_key: v })}
+            label="Avança para"
+          />
+        </>
+      );
+
+    case "auto_confirm_payment":
+      return (
+        <>
+          <TextRow
+            label="Variável do ID do pedido"
+            value={(cfg as { order_id_var?: string }).order_id_var ?? ""}
+            onChange={(v) => onUpdateConfig({ order_id_var: v })}
+          />
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">
+              Atraso (segundos antes da confirmação)
+            </label>
+            <Input
+              type="number"
+              value={(cfg as { delay_seconds?: number }).delay_seconds ?? 5}
+              onChange={(e) =>
+                onUpdateConfig({ delay_seconds: parseInt(e.target.value) || 5 })
+              }
+              className="bg-slate-800"
+            />
+          </div>
+          <NextNodeRow
+            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
+            allNodes={allNodes}
+            currentKey={node.node_key}
+            onChange={(v) => onUpdateConfig({ next_node_key: v })}
+            label="Após a confirmação, avança para"
+          />
+        </>
       );
   }
 }
@@ -257,20 +343,20 @@ function SendButtonsForm({
   return (
     <>
       <TextRow
-        label="Body text"
+        label="Texto do corpo"
         value={cfg.text ?? ""}
         onChange={(v) => onUpdateConfig({ text: v })}
         rows={3}
       />
       <TextRow
-        label="Footer (optional, 60 chars)"
+        label="Rodapé (opcional, 60 caracteres)"
         value={cfg.footer_text ?? ""}
         onChange={(v) => onUpdateConfig({ footer_text: v })}
       />
       <div>
         <div className="mb-2 flex items-center justify-between">
           <label className="text-xs text-slate-400">
-            Buttons (1–3) — each one routes to a different next node
+            Botões (1–3) — cada um direciona para um node diferente
           </label>
         </div>
         <div className="flex flex-col gap-3">
@@ -299,7 +385,7 @@ function SendButtonsForm({
               <Input
                 value={b.title}
                 onChange={(e) => updateButton(i, { title: e.target.value })}
-                placeholder="Visible title (≤20 chars)"
+                placeholder="Título visível (≤20 caracteres)"
                 className="bg-slate-800"
                 maxLength={20}
               />
@@ -308,7 +394,7 @@ function SendButtonsForm({
                 nodes={allNodes}
                 excludeKey={currentKey}
                 onChange={(v) => updateButton(i, { next_node_key: v ?? "" })}
-                placeholder="Next node…"
+                placeholder="Próximo node…"
               />
               <Button
                 variant="ghost"
@@ -329,7 +415,7 @@ function SendButtonsForm({
             className="mt-2"
           >
             <Plus className="h-3.5 w-3.5" />
-            Add button
+            Adicionar botão
           </Button>
         )}
       </div>
@@ -446,19 +532,19 @@ function SendListForm({
   return (
     <>
       <TextRow
-        label="Body text"
+        label="Texto do corpo"
         value={cfg.text ?? ""}
         onChange={(v) => onUpdateConfig({ text: v })}
         rows={3}
       />
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <TextRow
-          label="Tap-to-expand button label (≤20 chars)"
+          label="Rótulo do botão para expandir (≤20 caracteres)"
           value={cfg.button_label ?? ""}
           onChange={(v) => onUpdateConfig({ button_label: v })}
         />
         <TextRow
-          label="Footer (optional, 60 chars)"
+          label="Rodapé (opcional, 60 caracteres)"
           value={cfg.footer_text ?? ""}
           onChange={(v) => onUpdateConfig({ footer_text: v })}
         />
@@ -466,7 +552,7 @@ function SendListForm({
 
       <div className="mt-2">
         <label className="mb-2 block text-xs text-slate-400">
-          Rows (1–10 total across all sections)
+          Linhas (1–10 no total em todas as seções)
         </label>
         {sections.map((section, sIdx) => (
           <div
@@ -479,7 +565,7 @@ function SendListForm({
                 onChange={(e) =>
                   updateSection(sIdx, { title: e.target.value })
                 }
-                placeholder={`Section ${sIdx + 1} title (optional)`}
+                placeholder={`Título da seção ${sIdx + 1} (opcional)`}
                 className="bg-slate-800 text-xs"
               />
               {sections.length > 1 && (
@@ -488,7 +574,7 @@ function SendListForm({
                   size="sm"
                   onClick={() => removeSection(sIdx)}
                   className="shrink-0 text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                  aria-label="Remove section"
+                  aria-label="Remover seção"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
@@ -524,7 +610,7 @@ function SendListForm({
                   onChange={(e) =>
                     updateRow(sIdx, rIdx, { title: e.target.value })
                   }
-                  placeholder="Row title (≤24)"
+                  placeholder="Título da linha (≤24)"
                   className="bg-slate-800"
                   maxLength={24}
                 />
@@ -535,7 +621,7 @@ function SendListForm({
                   onChange={(v) =>
                     updateRow(sIdx, rIdx, { next_node_key: v ?? "" })
                   }
-                  placeholder="Next node…"
+                  placeholder="Próximo node…"
                 />
                 <Button
                   variant="ghost"
@@ -555,7 +641,7 @@ function SendListForm({
                 className="mt-1"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Add row
+                Adicionar linha
               </Button>
             )}
           </div>
@@ -566,7 +652,7 @@ function SendListForm({
         {sections.length < 10 && (
           <Button variant="outline" size="sm" onClick={addSection}>
             <Plus className="h-3.5 w-3.5" />
-            Add section
+            Adicionar seção
           </Button>
         )}
       </div>
@@ -614,7 +700,7 @@ function ConditionForm({
     <>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div>
-          <label className="mb-1 block text-xs text-slate-400">If</label>
+          <label className="mb-1 block text-xs text-slate-400">Se</label>
           <Select
             value={subject}
             onValueChange={(v) =>
@@ -625,19 +711,19 @@ function ConditionForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="var">Captured variable</SelectItem>
-              <SelectItem value="tag">Contact has tag</SelectItem>
-              <SelectItem value="contact_field">Contact field</SelectItem>
+              <SelectItem value="var">Variável capturada</SelectItem>
+              <SelectItem value="tag">Contato tem tag</SelectItem>
+              <SelectItem value="contact_field">Campo do contato</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="md:col-span-2">
           <label className="mb-1 block text-xs text-slate-400">
             {subject === "var"
-              ? "var name"
+              ? "nome da variável"
               : subject === "tag"
                 ? "Tag"
-                : "Field"}
+                : "Campo"}
           </label>
           {subject === "tag" && tags.length > 0 ? (
             <Select
@@ -645,7 +731,7 @@ function ConditionForm({
               onValueChange={(v) => onUpdateConfig({ subject_key: v })}
             >
               <SelectTrigger className="bg-slate-800">
-                <SelectValue placeholder="Pick a tag…" />
+                <SelectValue placeholder="Selecione uma tag…" />
               </SelectTrigger>
               <SelectContent>
                 {tags.map((t) => (
@@ -661,7 +747,7 @@ function ConditionForm({
               onValueChange={(v) => onUpdateConfig({ subject_key: v })}
             >
               <SelectTrigger className="bg-slate-800">
-                <SelectValue placeholder="Pick a field…" />
+                <SelectValue placeholder="Selecione um campo…" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="name">name</SelectItem>
@@ -690,7 +776,7 @@ function ConditionForm({
         )}
       >
         <div>
-          <label className="mb-1 block text-xs text-slate-400">Operator</label>
+          <label className="mb-1 block text-xs text-slate-400">Operador</label>
           <Select
             value={operator}
             onValueChange={(v) =>
@@ -701,16 +787,16 @@ function ConditionForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="present">is present</SelectItem>
-              <SelectItem value="absent">is absent</SelectItem>
-              <SelectItem value="equals">equals</SelectItem>
-              <SelectItem value="contains">contains</SelectItem>
+              <SelectItem value="present">está presente</SelectItem>
+              <SelectItem value="absent">está ausente</SelectItem>
+              <SelectItem value="equals">é igual a</SelectItem>
+              <SelectItem value="contains">contém</SelectItem>
             </SelectContent>
           </Select>
         </div>
         {showValue && (
           <div>
-            <label className="mb-1 block text-xs text-slate-400">Value</label>
+            <label className="mb-1 block text-xs text-slate-400">Valor</label>
             <Input
               value={cfg.value ?? ""}
               onChange={(e) => onUpdateConfig({ value: e.target.value })}
@@ -726,14 +812,14 @@ function ConditionForm({
           allNodes={allNodes}
           currentKey={currentKey}
           onChange={(v) => onUpdateConfig({ true_next: v })}
-          label="If true → advance to"
+          label="Se verdadeiro → avança para"
         />
         <NextNodeRow
           value={cfg.false_next ?? ""}
           allNodes={allNodes}
           currentKey={currentKey}
           onChange={(v) => onUpdateConfig({ false_next: v })}
-          label="If false → advance to"
+          label="Se falso → avança para"
         />
       </div>
     </>
@@ -767,7 +853,7 @@ function SetTagForm({
     <>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs text-slate-400">Action</label>
+          <label className="mb-1 block text-xs text-slate-400">Ação</label>
           <Select
             value={cfg.mode ?? "add"}
             onValueChange={(v) =>
@@ -778,8 +864,8 @@ function SetTagForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="add">Add tag</SelectItem>
-              <SelectItem value="remove">Remove tag</SelectItem>
+              <SelectItem value="add">Adicionar tag</SelectItem>
+              <SelectItem value="remove">Remover tag</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -791,7 +877,7 @@ function SetTagForm({
               onValueChange={(v) => onUpdateConfig({ tag_id: v })}
             >
               <SelectTrigger className="bg-slate-800">
-                <SelectValue placeholder="Pick a tag…" />
+                <SelectValue placeholder="Selecione uma tag…" />
               </SelectTrigger>
               <SelectContent>
                 {tags.map((t) => (
@@ -811,13 +897,13 @@ function SetTagForm({
           )}
         </div>
       </div>
-      <NextNodeRow
-        value={cfg.next_node_key ?? ""}
-        allNodes={allNodes}
-        currentKey={currentKey}
-        onChange={(v) => onUpdateConfig({ next_node_key: v })}
-        label="Then advance to"
-      />
+        <NextNodeRow
+          value={cfg.next_node_key ?? ""}
+          allNodes={allNodes}
+          currentKey={currentKey}
+          onChange={(v) => onUpdateConfig({ next_node_key: v })}
+          label="Então avança para"
+        />
     </>
   );
 }
@@ -899,7 +985,7 @@ function SendMediaForm({
     async (file: File) => {
       if (file.size > FLOW_MEDIA_MAX_BYTES) {
         toast.error(
-          `File is ${(file.size / 1024 / 1024).toFixed(1)} MB — limit is 16 MB.`,
+          `Arquivo tem ${(file.size / 1024 / 1024).toFixed(1)} MB — limite é 16 MB.`,
         );
         return;
       }
@@ -911,7 +997,7 @@ function SendMediaForm({
           error: userErr,
         } = await supabase.auth.getUser();
         if (userErr || !user) {
-          throw new Error("Not signed in.");
+          throw new Error("Não está conectado.");
         }
         // Resolve the caller's account_id so the path is account-
         // scoped rather than user-scoped. The 020 migration's RLS
@@ -925,7 +1011,7 @@ function SendMediaForm({
           .eq("user_id", user.id)
           .maybeSingle();
         if (profileErr || !profile?.account_id) {
-          throw new Error("Could not resolve your account.");
+          throw new Error("Não foi possível resolver sua conta.");
         }
         // Path convention matches migration 020's RLS policy: first
         // segment is `account-<uuid>`. Timestamp + random suffix
@@ -954,9 +1040,9 @@ function SendMediaForm({
           media_url: publicUrl,
           filename: file.name,
         });
-        toast.success("File uploaded.");
+        toast.success("Arquivo enviado.");
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Upload failed.";
+        const msg = err instanceof Error ? err.message : "Falha no upload.";
         toast.error(msg);
       } finally {
         setUploading(false);
@@ -972,7 +1058,7 @@ function SendMediaForm({
   return (
     <>
       <div>
-        <label className="mb-1 block text-xs text-slate-400">Media type</label>
+        <label className="mb-1 block text-xs text-slate-400">Tipo de mídia</label>
         <Select
           value={mediaType}
           onValueChange={(v) => {
@@ -990,17 +1076,17 @@ function SendMediaForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="image">Image (PNG, JPEG, WebP)</SelectItem>
-            <SelectItem value="video">Video (MP4, 3GP)</SelectItem>
+            <SelectItem value="image">Imagem (PNG, JPEG, WebP)</SelectItem>
+            <SelectItem value="video">Vídeo (MP4, 3GP)</SelectItem>
             <SelectItem value="document">
-              Document (PDF, Word, Excel, PowerPoint, TXT)
+              Documento (PDF, Word, Excel, PowerPoint, TXT)
             </SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <label className="mb-1 block text-xs text-slate-400">File</label>
+        <label className="mb-1 block text-xs text-slate-400">Arquivo</label>
         {cfg.media_url ? (
           <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-xs">
             <Paperclip className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
@@ -1017,7 +1103,7 @@ function SendMediaForm({
               type="button"
               onClick={handleClear}
               className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
-              aria-label="Remove file"
+              aria-label="Remover arquivo"
               disabled={uploading}
             >
               <X className="h-3.5 w-3.5" />
@@ -1033,12 +1119,12 @@ function SendMediaForm({
             {uploading ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Uploading…
+                Enviando…
               </>
             ) : (
               <>
                 <Upload className="h-3.5 w-3.5" />
-                Click to upload (max 16 MB)
+                Clique para enviar (máx. 16 MB)
               </>
             )}
           </button>
@@ -1058,7 +1144,7 @@ function SendMediaForm({
       </div>
 
       <TextRow
-        label="Caption (optional, shown under the media)"
+        label="Legenda (opcional, exibida abaixo da mídia)"
         value={cfg.caption ?? ""}
         onChange={(v) => onUpdateConfig({ caption: v })}
         rows={2}
@@ -1067,7 +1153,7 @@ function SendMediaForm({
       {isDocument && (
         <div>
           <label className="mb-1 block text-xs text-slate-400">
-            Filename shown to the customer (documents only)
+            Nome do arquivo exibido ao cliente (apenas documentos)
           </label>
           <Input
             value={cfg.filename ?? ""}
@@ -1078,13 +1164,13 @@ function SendMediaForm({
         </div>
       )}
 
-      <NextNodeRow
-        value={cfg.next_node_key ?? ""}
-        allNodes={allNodes}
-        currentKey={currentKey}
-        onChange={(v) => onUpdateConfig({ next_node_key: v })}
-        label="After sending, advance to"
-      />
+        <NextNodeRow
+          value={cfg.next_node_key ?? ""}
+          allNodes={allNodes}
+          currentKey={currentKey}
+          onChange={(v) => onUpdateConfig({ next_node_key: v })}
+          label="Após enviar, avança para"
+        />
     </>
   );
 }

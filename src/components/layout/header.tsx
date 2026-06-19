@@ -18,13 +18,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const pageTitles: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/inbox": "Inbox",
-  "/contacts": "Contacts",
-  "/pipelines": "Pipelines",
-  "/broadcasts": "Broadcasts",
-  "/automations": "Automations",
-  "/settings": "Settings",
+  "/dashboard": "Painel",
+  "/inbox": "Caixa de Entrada",
+  "/contacts": "Contatos",
+  "/pipelines": "Funis",
+  "/broadcasts": "Transmissões",
+  "/automations": "Automações",
+  "/settings": "Configurações",
 };
 
 function getPageTitle(pathname: string): string {
@@ -32,7 +32,7 @@ function getPageTitle(pathname: string): string {
   const match = Object.entries(pageTitles).find(([path]) =>
     pathname.startsWith(path),
   );
-  return match ? match[1] : "Dashboard";
+  return match ? match[1] : "Painel";
 }
 
 interface HeaderProps {
@@ -85,7 +85,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             </AvatarFallback>
           </Avatar>
           <span className="hidden text-sm font-medium text-white sm:inline">
-            {profile?.full_name ?? "User"}
+            {profile?.full_name ?? "Usuário"}
           </span>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -95,7 +95,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         >
           <div className="px-2 py-1.5">
             <p className="truncate text-sm font-medium text-white">
-              {profile?.full_name ?? "User"}
+              {profile?.full_name ?? "Usuário"}
             </p>
             <p className="truncate text-xs text-slate-400">
               {profile?.email ?? ""}
@@ -111,7 +111,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             }
           >
             <User className="size-4" />
-            Profile
+            Perfil
           </DropdownMenuItem>
           <DropdownMenuItem
             render={
@@ -122,7 +122,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             }
           >
             <SettingsIcon className="size-4" />
-            Settings
+            Configurações
           </DropdownMenuItem>
           <DropdownMenuSeparator className="bg-slate-800" />
           <DropdownMenuItem
@@ -130,7 +130,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             className="text-slate-200 focus:bg-slate-800 focus:text-white"
           >
             <LogOut className="size-4" />
-            Sign out
+            Sair
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

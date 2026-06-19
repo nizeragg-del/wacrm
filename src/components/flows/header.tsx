@@ -71,18 +71,18 @@ export function EditorHeader() {
             onChange={(e) =>
               setState((s) => ({ ...s, name: e.target.value }))
             }
-            placeholder="Flow name"
+            placeholder="Nome do flow"
             className="max-w-md bg-slate-900 text-lg font-semibold"
           />
           <StatusBadge status={state.status} />
           {dirty && (
             <span
               className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-amber-300"
-              title="Unsaved changes — hit Save to persist"
+              title="Alterações não salvas — clique em Salvar para persistir"
               aria-live="polite"
             >
               <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-              Edited
+              Editado
             </span>
           )}
         </div>
@@ -93,7 +93,7 @@ export function EditorHeader() {
             onClick={() => router.push(`/flows/${flow.id}/runs`)}
           >
             <History className="h-3.5 w-3.5" />
-            Runs
+            Execuções
           </Button>
           <Button
             variant="ghost"
@@ -102,7 +102,7 @@ export function EditorHeader() {
             className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
           >
             <Trash2 className="h-3.5 w-3.5" />
-            Delete
+            Excluir
           </Button>
           {state.status === "active" ? (
             <Button
@@ -116,7 +116,7 @@ export function EditorHeader() {
               ) : (
                 <PauseCircle className="h-3.5 w-3.5" />
               )}
-              Pause
+              Pausar
             </Button>
           ) : (
             <Button
@@ -126,7 +126,7 @@ export function EditorHeader() {
               disabled={activating || !canActivate}
               title={
                 !canActivate
-                  ? "Fix the issues below before activating"
+                  ? "Corrija os problemas abaixo antes de ativar"
                   : undefined
               }
             >
@@ -135,7 +135,7 @@ export function EditorHeader() {
               ) : (
                 <PlayCircle className="h-3.5 w-3.5" />
               )}
-              Activate
+              Ativar
             </Button>
           )}
           <Button onClick={() => void save()} disabled={saving} size="sm">
@@ -144,7 +144,7 @@ export function EditorHeader() {
             ) : (
               <Save className="h-3.5 w-3.5" />
             )}
-            Save
+            Salvar
           </Button>
         </div>
       </div>
@@ -153,7 +153,7 @@ export function EditorHeader() {
         onChange={(e) =>
           setState((s) => ({ ...s, description: e.target.value }))
         }
-        placeholder="Optional description (internal — customers don't see this)"
+        placeholder="Descrição opcional (interna — clientes não veem isso)"
         className="bg-slate-900 text-sm"
       />
     </div>
@@ -161,6 +161,11 @@ export function EditorHeader() {
 }
 
 function StatusBadge({ status }: { status: BuilderState["status"] }) {
+  const labels: Record<BuilderState["status"], string> = {
+    draft: "Rascunho",
+    active: "Ativo",
+    archived: "Arquivado",
+  };
   const cls = {
     draft: "border-slate-700 bg-slate-800 text-slate-300",
     active: "border-emerald-600/40 bg-emerald-500/10 text-emerald-300",
@@ -168,7 +173,7 @@ function StatusBadge({ status }: { status: BuilderState["status"] }) {
   }[status];
   return (
     <Badge variant="outline" className={cn("shrink-0", cls)}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {labels[status]}
     </Badge>
   );
 }

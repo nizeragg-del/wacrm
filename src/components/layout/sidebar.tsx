@@ -35,29 +35,25 @@ const ROLE_CHIP: Record<
 > = {
   owner: {
     icon: Crown,
-    label: "Owner",
-    // Amber: scarce, immutable, "the boss" — gets visual emphasis.
+    label: "Proprietário",
     className:
       "border-amber-500/40 bg-amber-500/10 text-amber-300",
   },
   admin: {
     icon: Shield,
     label: "Admin",
-    // Primary-tinted: significant but not as scarce as owner.
     className:
       "border-primary/40 bg-primary/10 text-primary",
   },
   agent: {
     icon: UserCog,
-    label: "Agent",
-    // Neutral slate: the operational default.
+    label: "Atendente",
     className:
       "border-slate-700 bg-slate-800 text-slate-300",
   },
   viewer: {
     icon: User,
-    label: "Viewer",
-    // Muted slate: read-only role; visually quieter than agent.
+    label: "Visualizador",
     className:
       "border-slate-800 bg-slate-900 text-slate-500",
   },
@@ -87,17 +83,17 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/inbox", label: "Inbox", icon: MessageSquare },
-  { href: "/contacts", label: "Contacts", icon: Users },
-  { href: "/pipelines", label: "Pipelines", icon: GitBranch },
-  { href: "/broadcasts", label: "Broadcasts", icon: Radio },
-  { href: "/automations", label: "Automations", icon: Zap },
+  { href: "/dashboard", label: "Painel", icon: LayoutDashboard },
+  { href: "/inbox", label: "Caixa de Entrada", icon: MessageSquare },
+  { href: "/contacts", label: "Contatos", icon: Users },
+  { href: "/pipelines", label: "Funis", icon: GitBranch },
+  { href: "/broadcasts", label: "Transmissões", icon: Radio },
+  { href: "/automations", label: "Automações", icon: Zap },
   { href: "/flows", label: "Flows", icon: Workflow, beta: true },
 ];
 
 const bottomNavItems = [
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings", label: "Configurações", icon: Settings },
 ];
 
 interface SidebarProps {
@@ -183,7 +179,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               <MessageSquare className="h-4 w-4" />
             </div>
             <span className="text-sm font-semibold text-white">
-              CRM Template for WhatsApp
+              CRM para WhatsApp
             </span>
           </Link>
           <button
@@ -323,7 +319,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               </Avatar>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-white">
-                  {profile?.full_name ?? "User"}
+                  {profile?.full_name ?? "Usuário"}
                 </p>
                 <p className="truncate text-xs text-slate-400">
                   {profile?.email ?? ""}
@@ -346,7 +342,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 }
               >
                 <User className="size-4" />
-                Profile
+                Perfil
               </DropdownMenuItem>
               <DropdownMenuItem
                 render={
@@ -358,7 +354,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 }
               >
                 <Settings className="size-4" />
-                Settings
+                Configurações
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-slate-800" />
               <DropdownMenuItem
@@ -366,7 +362,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 className="text-slate-200 focus:bg-slate-800 focus:text-white"
               >
                 <LogOut className="size-4" />
-                Sign out
+                Sair
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

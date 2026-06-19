@@ -701,6 +701,185 @@ function validateNode(
       break;
     }
 
+    case "generate_website": {
+      const cfg = node.config as {
+        specs?: {
+          empresa_nome_var?: string;
+          nicho_var?: string;
+          descricao_var?: string;
+          cores_var?: string;
+          observacoes_var?: string;
+        };
+        template_type?: string;
+        template_type_var?: string;
+        next_node_key?: string;
+      };
+      if (!cfg.specs?.empresa_nome_var) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "specs.empresa_nome_var",
+          message: "Generate-website needs empresa_nome_var mapping.",
+        });
+      }
+      if (!cfg.specs?.nicho_var) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "specs.nicho_var",
+          message: "Generate-website needs nicho_var mapping.",
+        });
+      }
+      if (!cfg.specs?.descricao_var) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "specs.descricao_var",
+          message: "Generate-website needs descricao_var mapping.",
+        });
+      }
+      // Accept either template_type (static) or template_type_var (dynamic from flow var)
+      if (
+        !cfg.template_type &&
+        !cfg.template_type_var
+      ) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "template_type",
+          message: "Generate-website needs a template_type or template_type_var.",
+        });
+      }
+      if (!cfg.next_node_key) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "next_node_key",
+          message: "Generate-website must point to a next node.",
+        });
+      } else if (!knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "next_node_key",
+          message: `Generate-website points to non-existent node "${cfg.next_node_key}".`,
+        });
+      }
+      break;
+    }
+
+    case "create_payment": {
+      const cfg = node.config as {
+        order_id_var?: string;
+        payment_value?: number;
+        next_node_key?: string;
+      };
+      if (!cfg.order_id_var?.trim()) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "order_id_var",
+          message: "Create-payment needs order_id_var (var holding the website_order_id).",
+        });
+      }
+      if (!cfg.payment_value || cfg.payment_value <= 0) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "payment_value",
+          message: "Create-payment needs a valid payment value greater than zero.",
+        });
+      }
+      if (!cfg.next_node_key) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "next_node_key",
+          message: "Create-payment must point to a next node.",
+        });
+      } else if (!knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "next_node_key",
+          message: `Create-payment points to non-existent node "${cfg.next_node_key}".`,
+        });
+      }
+      break;
+    }
+
+    case "website_order_check": {
+      const cfg = node.config as { order_var?: string; next_node_key?: string };
+      if (!cfg.order_var?.trim()) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "order_var",
+          message: "Website-order-check needs an order_var key.",
+        });
+      }
+      if (!cfg.next_node_key) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "next_node_key",
+          message: "Website-order-check must point to a next node.",
+        });
+      } else if (!knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "next_node_key",
+          message: `Website-order-check points to non-existent node "${cfg.next_node_key}".`,
+        });
+      }
+      break;
+    }
+
+    case "schedule_reminder": {
+      const cfg = node.config as { order_id_var?: string; delay_minutes?: number; message_template?: string; next_node_key?: string };
+      if (!cfg.order_id_var?.trim()) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "order_id_var",
+          message: "Schedule-reminder needs an order_id_var.",
+        });
+      }
+      if (!cfg.delay_minutes || cfg.delay_minutes <= 0) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "delay_minutes",
+          message: "Schedule-reminder needs a positive delay_minutes.",
+        });
+      }
+      if (!cfg.next_node_key) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "next_node_key",
+          message: "Schedule-reminder must point to a next node.",
+        });
+      } else if (!knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "next_node_key",
+          message: `Schedule-reminder points to non-existent node "${cfg.next_node_key}".`,
+        });
+      }
+      break;
+    }
+
+    case "auto_confirm_payment": {
+      const cfg = node.config as { order_id_var?: string; next_node_key?: string };
+      if (!cfg.order_id_var?.trim()) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "order_id_var",
+          message: "Auto-confirm-payment needs an order_id_var.",
+        });
+      }
+      if (!cfg.next_node_key) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "next_node_key",
+          message: "Auto-confirm-payment must point to a next node.",
+        });
+      } else if (!knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error", scope: "node", node_key: node.node_key,
+          field: "next_node_key",
+          message: `Auto-confirm-payment points to non-existent node "${cfg.next_node_key}".`,
+        });
+      }
+      break;
+    }
+
     case "handoff":
     case "end":
       // Terminal nodes have no outgoing edges; nothing to validate
@@ -751,7 +930,12 @@ function outgoingEdges(node: NodeInput): string[] {
     case "send_message":
     case "send_media":
     case "collect_input":
-    case "set_tag": {
+    case "set_tag":
+    case "generate_website":
+    case "create_payment":
+    case "website_order_check":
+    case "schedule_reminder":
+    case "auto_confirm_payment": {
       const cfg = node.config as { next_node_key?: string };
       return cfg.next_node_key ? [cfg.next_node_key] : [];
     }

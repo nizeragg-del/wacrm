@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # Evolution API
+  evolution-api:
+    image: evoapicloud/evolution-api:latest
+    container_name: evolution-api
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - SERVER_URL=http://localhost:8080
+      - LOG_LEVEL=DEBUG
+      - LOG_COLOR=true
+      - LOG_BAILEYS=debug
+      - DEL_INSTANCE=false
+      - LANGUAGE=pt-BR
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://user:password@postgres:5432/evolution
+      - DATABASE_CONNECTION_CLIENT_NAME=evolution_exchange
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_MESSAGE_UPDATE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+      - DATABASE_SAVE_DATA_LABELS=true
+      - DATABASE_SAVE_DATA_HISTORIC=true
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis:6379
+      - CACHE_REDIS_PREFIX_KEY=evolution
+      - CACHE_REDIS_SAVE_INSTANCES=false
+      - CACHE_LOCAL_ENABLED=false
+      - AUTHENTICATION_TYPE=apikey
+      - AUTHENTICATION_API_KEY=apiteste@991864089a
+      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./evolution-instances:/app/instances
+    networks:
+      - wacrm-network
+
+  # PostgreSQL (Evolution armazena dados aqui)
+  postgres:
+    image: postgres:15
+    container_name: evolution-postgres
+    environment:
+      - POSTGRES_DB=evolution
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - wacrm-network
+
+  # Redis (cache + fila)
+  redis:
+    image: redis:7-alpine
+    container_name: evolution-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - wacrm-network
+
+
+volumes:
+  postgres-data:
+
+networks:
+  wacrm-network:
+    driver: bridge

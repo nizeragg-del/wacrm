@@ -41,14 +41,18 @@ import {
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
 import {
+  type AutoConfirmPaymentConfig,
   type CollectInputNodeConfig,
   type ConditionNodeConfig,
+  type CreatePaymentNodeConfig,
   type DispatchInboundInput,
   type DispatchInboundResult,
   type FlowNodeRow,
   type FlowRow,
   type FlowRunRow,
+  type GenerateWebsiteNodeConfig,
   type ParsedInbound,
+  type ScheduleReminderConfig,
   type SendButtonsNodeConfig,
   type SendListNodeConfig,
   type SendMediaNodeConfig,
@@ -56,7 +60,12 @@ import {
   type SetTagNodeConfig,
   type StartNodeConfig,
   type KeywordTriggerConfig,
+  type WebsiteOrderCheckConfig,
 } from "./types";
+import { createWebsiteOrder, generateWebsite } from "@/lib/website-generator/generator";
+import { createStaticPixQrCode } from "@/lib/website-generator/asaas";
+import { buildPreviewUrl } from "@/lib/website-generator/security";
+import type { WebsiteSpecifications } from "@/lib/website-generator/types";
 
 // ============================================================
 // Pure helpers — extracted so engine.test.ts can exercise them
@@ -116,7 +125,12 @@ export function isAutoAdvancing(node_type: string): boolean {
     node_type === "send_message" ||
     node_type === "send_media" ||
     node_type === "condition" ||
-    node_type === "set_tag"
+    node_type === "set_tag" ||
+    node_type === "generate_website" ||
+    node_type === "create_payment" ||
+    node_type === "website_order_check" ||
+    node_type === "schedule_reminder" ||
+    node_type === "auto_confirm_payment"
   );
 }
 
@@ -132,6 +146,22 @@ export function isSuspending(node_type: string): boolean {
 /** Nodes that end the run. */
 export function isTerminal(node_type: string): boolean {
   return node_type === "handoff" || node_type === "end";
+}
+
+const WAITING_MESSAGES: Record<string, string> = {
+  generate_website:
+    "Já recebi sua mensagem! Só um momento que ainda estou criando seu site com IA... 🚀 " +
+    "Assim que ficar pronto eu mostro o resultado pra você!",
+  create_payment:
+    "Só um segundinho, estou gerando seu PIX para pagamento... 💰 " +
+    "Já já envio o QR Code!",
+  http_fetch:
+    "Recebi sua mensagem! Estou processando sua solicitação... ⏳ " +
+    "Aguarde só mais um instante!",
+};
+
+function getWaitingMessage(nodeType: string): string {
+  return WAITING_MESSAGES[nodeType] || "Processando... só um instante! ⏳";
 }
 
 /**
@@ -363,7 +393,7 @@ async function sendButtonsAndSuspend(
     userId: run.user_id,
     conversationId: run.conversation_id!,
     contactId: run.contact_id!,
-    bodyText: cfg.text,
+    bodyText: interpolateVars(cfg.text, run.vars),
     headerText: cfg.header_text,
     footerText: cfg.footer_text,
     buttons: cfg.buttons.map((b) => ({ id: b.reply_id, title: b.title })),
@@ -399,7 +429,7 @@ async function sendListAndSuspend(
     userId: run.user_id,
     conversationId: run.conversation_id!,
     contactId: run.contact_id!,
-    bodyText: cfg.text,
+    bodyText: interpolateVars(cfg.text, run.vars),
     buttonLabel: cfg.button_label,
     headerText: cfg.header_text,
     footerText: cfg.footer_text,
@@ -732,6 +762,302 @@ async function advanceFromNodeKey(
       currentKey = cfg.next_node_key;
       continue;
     }
+    if (node.node_type === "generate_website") {
+      const cfg = node.config as unknown as GenerateWebsiteNodeConfig;
+      try {
+        const empresaNome = String(run.vars[cfg.specs.empresa_nome_var] ?? '');
+        const nicho = String(run.vars[cfg.specs.nicho_var] ?? '');
+        const descricao = String(run.vars[cfg.specs.descricao_var] ?? '');
+        const cores = cfg.specs.cores_var ? String(run.vars[cfg.specs.cores_var] ?? '') : '';
+        const observacoes = cfg.specs.observacoes_var ? String(run.vars[cfg.specs.observacoes_var] ?? '') : '';
+
+        if (!empresaNome || !nicho || !descricao) {
+          throw new Error('Missing required website specifications in vars');
+        }
+
+        const templateType = cfg.template_type_var
+          ? (String(run.vars[cfg.template_type_var] ?? '') as WebsiteSpecifications['template_type'])
+          : cfg.template_type;
+
+        if (!templateType) {
+          throw new Error('template_type not set (neither template_type nor template_type_var)');
+        }
+
+        const specs: WebsiteSpecifications = {
+          empresa_nome: empresaNome,
+          nicho,
+          descricao,
+          cores: cores || undefined,
+          oberservacoes: observacoes || undefined,
+          template_type: templateType,
+        };
+
+        const order = await createWebsiteOrder({
+          account_id: run.account_id,
+          contact_id: run.contact_id!,
+          conversation_id: run.conversation_id!,
+          specifications: specs,
+        });
+
+        const result = await generateWebsite(order.id, specs);
+
+        const previewUrl = buildPreviewUrl(order.id)
+        const newVars = { ...run.vars, website_order_id: order.id, preview_url: previewUrl };
+        run.vars = newVars;
+        await db.from("flow_runs").update({ vars: newVars }).eq("id", run.id);
+
+        await engineSendText({
+          accountId: run.account_id,
+          userId: run.user_id,
+          conversationId: run.conversation_id!,
+          contactId: run.contact_id!,
+          text: `Seu site está pronto!\n\nVeja o preview aqui:\n${previewUrl}\n\nDepois de aprovar, vou gerar o PIX para pagamento.`,
+        });
+
+        await logEvent(db, run.id, "message_sent", node.node_key, {
+          node_type: "generate_website",
+          order_id: order.id,
+          preview_url: previewUrl,
+        });
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "generate_website_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+
+        const orderIdVar = run.vars?.website_order_id;
+        if (orderIdVar) {
+          await db.from("website_orders").update({
+            status: "failed",
+            error_message: err instanceof Error ? err.message : String(err),
+            updated_at: new Date().toISOString(),
+          }).eq("id", orderIdVar);
+        }
+
+        await endRun(db, run.id, "failed", "generate_website_failed");
+        return { outcome: "completed" };
+      }
+      currentKey = cfg.next_node_key;
+      continue;
+    }
+    if (node.node_type === "create_payment") {
+      const cfg = node.config as unknown as CreatePaymentNodeConfig;
+      try {
+        const orderId = String(run.vars[cfg.order_id_var] ?? '');
+        if (!orderId) throw new Error('website_order_id not found in vars');
+
+        const pix = await createStaticPixQrCode({
+          value: cfg.payment_value,
+          description: `Criação de Landing Page`,
+        });
+
+        await db.from("website_orders").update({
+          asaas_payment_id: pix.id,
+          asaas_payment_value: cfg.payment_value,
+          pix_qrcode: pix.encodedImage || null,
+          pix_copiaecola: pix.payload || null,
+          status: 'awaiting_payment',
+          updated_at: new Date().toISOString(),
+        }).eq('id', orderId);
+
+        const newVars = {
+          ...run.vars,
+          payment_id: pix.id,
+          pix_copiaecola: pix.payload,
+        };
+        run.vars = newVars;
+        await db.from("flow_runs").update({ vars: newVars }).eq("id", run.id);
+
+        if (pix.encodedImage) {
+          try {
+            let pixUrl = pix.encodedImage;
+            if (!/^https?:\/\//i.test(pixUrl)) {
+              const base64 = pixUrl.startsWith('data:')
+                ? pixUrl.split(',')[1]
+                : pixUrl;
+              const fileName = `account-${run.account_id}/pix-qr-${orderId}.png`;
+              const { error: uploadErr } = await supabaseAdmin()
+                .storage
+                .from('flow-media')
+                .upload(fileName, Buffer.from(base64, 'base64'), {
+                  contentType: 'image/png',
+                  upsert: true,
+                });
+              if (!uploadErr) {
+                const { data: { publicUrl } } = supabaseAdmin()
+                  .storage
+                  .from('flow-media')
+                  .getPublicUrl(fileName);
+                pixUrl = publicUrl;
+              }
+            }
+            await engineSendMedia({
+              accountId: run.account_id,
+              userId: run.user_id,
+              conversationId: run.conversation_id!,
+              contactId: run.contact_id!,
+              kind: "image",
+              link: pixUrl,
+              caption: "Pagamento via PIX",
+            });
+          } catch (sendErr) {
+            console.error('[flows] failed to send pix qr:', sendErr);
+          }
+        }
+
+        if (pix.payload) {
+          try {
+            await engineSendText({
+              accountId: run.account_id,
+              userId: run.user_id,
+              conversationId: run.conversation_id!,
+              contactId: run.contact_id!,
+              text: `PIX Copia e Cola:\n\`${pix.payload}\``,
+            });
+          } catch (sendErr) {
+            console.error('[flows] failed to send pix text:', sendErr);
+          }
+        }
+
+        await logEvent(db, run.id, "message_sent", node.node_key, {
+          node_type: "create_payment",
+          payment_id: pix.id,
+          value: cfg.payment_value,
+        });
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "create_payment_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        await endRun(db, run.id, "failed", "create_payment_failed");
+        return { outcome: "completed" };
+      }
+      currentKey = cfg.next_node_key;
+      continue;
+    }
+    if (node.node_type === "website_order_check") {
+      const cfg = node.config as unknown as WebsiteOrderCheckConfig;
+      try {
+        const { data: orders, error: orderErr } = await db
+          .from("website_orders")
+          .select("*")
+          .eq("account_id", run.account_id)
+          .eq("contact_id", run.contact_id!)
+          .in("status", ["awaiting_payment", "deploying", "deployed"])
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (orderErr) throw orderErr;
+        const order = orders?.[0] ?? null;
+        const newVars = { ...run.vars, [cfg.order_var]: order };
+        run.vars = newVars;
+        await db.from("flow_runs").update({ vars: newVars }).eq("id", run.id);
+        await logEvent(db, run.id, "node_entered", node.node_key, {
+          node_type: "website_order_check",
+          found: order !== null,
+          order_id: order?.id ?? null,
+        });
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "website_order_check_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        const newVars = { ...run.vars, [cfg.order_var]: null };
+        run.vars = newVars;
+        await db.from("flow_runs").update({ vars: newVars }).eq("id", run.id);
+      }
+      currentKey = cfg.next_node_key;
+      continue;
+    }
+    if (node.node_type === "schedule_reminder") {
+      const cfg = node.config as unknown as ScheduleReminderConfig;
+      try {
+        const orderId = String(run.vars[cfg.order_id_var] ?? '');
+        if (!orderId) throw new Error('order_id not found in vars');
+        const remindAt = new Date(Date.now() + cfg.delay_minutes * 60 * 1000).toISOString();
+        await db.from("scheduled_reminders").insert({
+          order_id: orderId,
+          contact_id: run.contact_id!,
+          conversation_id: run.conversation_id!,
+          account_id: run.account_id,
+          user_id: run.user_id,
+          remind_at: remindAt,
+          message_template: cfg.message_template,
+        });
+        await logEvent(db, run.id, "node_entered", node.node_key, {
+          node_type: "schedule_reminder",
+          delay_minutes: cfg.delay_minutes,
+          remind_at: remindAt,
+        });
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "schedule_reminder_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
+      currentKey = cfg.next_node_key;
+      continue;
+    }
+    if (node.node_type === "auto_confirm_payment") {
+      const cfg = node.config as unknown as AutoConfirmPaymentConfig;
+      try {
+        const orderId = String(run.vars[cfg.order_id_var] ?? '');
+        if (!orderId) throw new Error('website_order_id not found in vars');
+
+        const delaySec = cfg.delay_seconds ?? 5;
+        await logEvent(db, run.id, "node_entered", node.node_key, {
+          node_type: "auto_confirm_payment",
+          order_id: orderId,
+          delay_seconds: delaySec,
+        });
+
+        // Wait before calling simulate-payment (non-blocking for the run)
+        await new Promise(resolve => setTimeout(resolve, delaySec * 1000));
+
+        // Call the simulate-payment endpoint internally
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        const headers: Record<string, string> = {};
+        const paymentTestSecret = process.env.PAYMENT_TEST_SECRET || process.env.DEBUG_API_SECRET;
+        if (paymentTestSecret) {
+          headers["x-payment-test-secret"] = paymentTestSecret;
+        }
+        const res = await fetch(`${baseUrl}/api/debug/simulate-payment?orderId=${orderId}`, {
+          headers,
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          // Reload the order to get the deploy_url
+          const { data: updatedOrder } = await db
+            .from('website_orders')
+            .select('deploy_url')
+            .eq('id', orderId)
+            .maybeSingle();
+
+          if (updatedOrder?.deploy_url) {
+            const newVars = { ...run.vars, deploy_url: updatedOrder.deploy_url };
+            run.vars = newVars;
+            await db.from('flow_runs').update({ vars: newVars }).eq('id', run.id);
+          }
+
+          await logEvent(db, run.id, "node_entered", node.node_key, {
+            node_type: "auto_confirm_payment_success",
+            deploy_url: result.deploy_url,
+          });
+        } else {
+          await logEvent(db, run.id, "error", node.node_key, {
+            reason: "auto_confirm_payment_failed",
+            detail: result.error || 'Unknown error',
+          });
+        }
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "auto_confirm_payment_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
+      currentKey = cfg.next_node_key;
+      continue;
+    }
     if (node.node_type === "send_buttons") {
       await sendButtonsAndSuspend(db, run, node);
       // Persist the new current_node_key via optimistic UPDATE.
@@ -918,6 +1244,39 @@ async function handleReplyForActiveRun(
     return { consumed: true, flow_run_id: run.id, outcome: "no_match" };
   }
 
+  // Processing nodes (generate_website, create_payment, http_fetch) are
+  // synchronous — the engine is currently awaiting their result. If the
+  // customer sends a message during that time, acknowledge politely (with
+  // a 30s cooldown so we don't spam) instead of letting it fall through
+  // to the fallback policy.
+  const BUSY_COOLDOWN_MS = 30_000;
+  const processingNodeTypes = new Set([
+    "generate_website",
+    "create_payment",
+    "http_fetch",
+  ]);
+  if (processingNodeTypes.has(currentNode.node_type)) {
+    const lastKey = `_busy_last_responded_at_${currentNode.node_key}`;
+    const lastResponded = Number((run.vars as Record<string, unknown>)?.[lastKey]) || 0;
+    const now = Date.now();
+    if (now - lastResponded > BUSY_COOLDOWN_MS) {
+      const waitingMessage = getWaitingMessage(currentNode.node_type);
+      try {
+        await engineSendText({
+          accountId: run.account_id,
+          userId: run.user_id,
+          conversationId: run.conversation_id!,
+          contactId: run.contact_id!,
+          text: waitingMessage,
+        });
+      } catch { /* best-effort */ }
+      const newVars = { ...run.vars, [lastKey]: now };
+      await db.from("flow_runs").update({ vars: newVars }).eq("id", run.id);
+      run.vars = newVars;
+    }
+    return { consumed: true, flow_run_id: run.id, outcome: "busy" };
+  }
+
   // Two ways a reply can advance:
   //   1. Interactive button/list tap on a send_buttons/send_list node.
   //   2. Text reply on a collect_input node — capture into vars.
@@ -930,6 +1289,80 @@ async function handleReplyForActiveRun(
       currentNode.node_type === "send_list")
   ) {
     matched = matchReplyId(currentNode, message.reply_id);
+  } else if (
+    message.kind === "text" &&
+    (currentNode.node_type === "send_buttons" ||
+      currentNode.node_type === "send_list")
+  ) {
+    // Fallback for WhatsApp Web that can't render interactive buttons.
+    // Customer either typed the button ID (shown in the fallback text)
+    // or the button title. Match both.
+    const text = message.text.trim().toLowerCase();
+    const cfg = currentNode.config as unknown as
+      | SendButtonsNodeConfig
+      | SendListNodeConfig;
+    if (currentNode.node_type === "send_buttons") {
+      const btnCfg = cfg as SendButtonsNodeConfig;
+      const buttons = btnCfg.buttons ?? [];
+      // Also match by numeric index (e.g. "1", "2" matches first/second
+      // button) since the text fallback numbers them for the user.
+      const numIndex = /^(\d+)$/.exec(text);
+      if (numIndex) {
+        const idx = parseInt(numIndex[1], 10) - 1;
+        if (idx >= 0 && idx < buttons.length) {
+          matched = buttons[idx].next_node_key;
+        }
+      }
+      if (!matched) {
+        for (const btn of buttons) {
+          const title = btn.title.toLowerCase();
+          const replyId = btn.reply_id.toLowerCase();
+          if (
+            text === replyId ||
+            text === title ||
+            text === title.replace(/[^a-záéíóúãõç0-9\s]/g, '').trim()
+          ) {
+            matched = btn.next_node_key;
+            break;
+          }
+          // Natural language aliases
+          const simAliases = ['sim', 'ss', 'ok', 'okay', 'beleza', 'claro', 'pode', 'vamos', 'yes', 'y', 's'];
+          const naoAliases = ['não', 'nao', 'n', 'no', 'cancelar', 'parar'];
+          if ((simAliases.includes(text) || simAliases.includes(text.replace(/[!?.,]+$/, ''))) && 
+              (replyId === 'approve' || title.includes('aprov') || title.includes('sim'))) {
+            matched = btn.next_node_key;
+            break;
+          }
+          if ((naoAliases.includes(text) || naoAliases.includes(text.replace(/[!?.,]+$/, ''))) && 
+              (replyId === 'cancel' || replyId === 'adjust' || title.includes('cancel') || title.includes('ajust') || title.includes('não') || title.includes('nao'))) {
+            matched = btn.next_node_key;
+            break;
+          }
+        }
+      }
+    } else {
+      const listCfg = cfg as SendListNodeConfig;
+      const allRows = listCfg.sections.flatMap(s => s.rows ?? []);
+      // Numeric index match (e.g. "1", "2")
+      const numIndex = /^(\d+)$/.exec(text);
+      if (numIndex) {
+        const idx = parseInt(numIndex[1], 10) - 1;
+        if (idx >= 0 && idx < allRows.length) {
+          matched = allRows[idx].next_node_key;
+        }
+      }
+      if (!matched) {
+        for (const row of allRows) {
+          if (
+            text === row.reply_id.toLowerCase() ||
+            text === row.title.toLowerCase()
+          ) {
+            matched = row.next_node_key;
+            break;
+          }
+        }
+      }
+    }
   } else if (
     message.kind === "text" &&
     currentNode.node_type === "collect_input"
@@ -957,6 +1390,36 @@ async function handleReplyForActiveRun(
           captured_length: captured.length,
         });
         matched = cfg.next_node_key;
+      }
+    }
+  }
+
+  // Store selected reply_id in vars if the node has capture_reply_var
+  if (matched && (currentNode.node_type === "send_buttons" || currentNode.node_type === "send_list")) {
+    const captureVar = (currentNode.config as Record<string, unknown>).capture_reply_var as string | undefined;
+    if (captureVar) {
+      let replyId: string | null = null;
+      if (currentNode.node_type === "send_buttons") {
+        const btnCfg = currentNode.config as unknown as SendButtonsNodeConfig;
+        for (const btn of btnCfg.buttons ?? []) {
+          if (btn.next_node_key === matched) { replyId = btn.reply_id; break; }
+        }
+      } else {
+        const listCfg = currentNode.config as unknown as SendListNodeConfig;
+        for (const section of listCfg.sections ?? []) {
+          for (const row of section.rows ?? []) {
+            if (row.next_node_key === matched) { replyId = row.reply_id; break; }
+          }
+          if (replyId) break;
+        }
+      }
+      if (replyId) {
+        const newVars = { ...run.vars, [captureVar]: replyId };
+        const { error: capErr } = await db
+          .from("flow_runs")
+          .update({ vars: newVars })
+          .eq("id", run.id);
+        if (!capErr) run.vars = newVars;
       }
     }
   }

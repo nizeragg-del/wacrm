@@ -7,6 +7,7 @@ import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
+import { handleAiAgent } from '@/lib/ai-agent/agent'
 import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
@@ -162,33 +163,254 @@ export async function GET(request: Request) {
 
 // POST - Receive messages
 export async function POST(request: Request) {
-  // Read raw body first so we can HMAC-verify the exact bytes Meta
-  // signed. request.json() would re-encode and break the signature.
+  const { searchParams } = new URL(request.url)
+  const token = searchParams.get('token')
   const rawBody = await request.text()
   const signature = request.headers.get('x-hub-signature-256')
 
-  if (!verifyMetaWebhookSignature(rawBody, signature)) {
-    // 401 (not 200) — we want Meta's delivery dashboard to show failures
-    // loudly if a misconfiguration causes signatures to stop matching,
-    // rather than silently eating events.
+  let isEvolution = false
+  let matchedConfig: any = null
+
+  if (token) {
+    // Evolution API: check token authentication
+    const { data: configs, error: configError } = await supabaseAdmin()
+      .from('whatsapp_config')
+      .select('*')
+
+    if (!configError && configs) {
+      for (const config of configs) {
+        if (!config.access_token) continue
+        try {
+          if (decrypt(config.access_token) === token) {
+            matchedConfig = config
+            isEvolution = true
+            break
+          }
+        } catch {
+          // Ignore decryption error
+        }
+      }
+    }
+  }
+
+  // If not Evolution and Meta signature is missing/invalid, return 401
+  if (!isEvolution && !verifyMetaWebhookSignature(rawBody, signature)) {
     console.warn('[webhook] rejected request with invalid signature')
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
   }
 
-  let body: { entry?: WhatsAppWebhookEntry[] }
+  let body: any
   try {
     body = JSON.parse(rawBody)
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // Process asynchronously so we can ack Meta within their timeout.
-  processWebhook(body).catch((error) => {
-    console.error('Error processing webhook:', error)
-  })
+  // Process webhook
+  if (isEvolution && matchedConfig) {
+    processEvolutionWebhook(body, matchedConfig).catch((error) => {
+      console.error('Error processing Evolution webhook:', error)
+    })
+  } else {
+    processWebhook(body).catch((error) => {
+      console.error('Error processing Meta webhook:', error)
+    })
+  }
 
   return NextResponse.json({ status: 'received' }, { status: 200 })
 }
+
+async function processEvolutionWebhook(body: any, config: any) {
+  const event = String(body.event || '').toLowerCase()
+  const data = body.data
+
+  if (!event || !data) return
+
+  // 1. New Message received (MESSAGES_UPSERT)
+  if (event === 'messages.upsert' || event === 'messages_upsert') {
+    // Only process incoming messages (fromMe = false)
+    if (data.key?.fromMe === true) {
+      return
+    }
+
+    const message = mapEvolutionMessageToMeta(data)
+    if (!message) return
+
+    const contact = {
+      profile: { name: data.pushName || message.from },
+      wa_id: message.from
+    }
+
+    const decryptedAccessToken = decrypt(config.access_token)
+
+    await processMessage(
+      message,
+      contact,
+      config.account_id,
+      config.user_id,
+      decryptedAccessToken
+    )
+  }
+
+  // 2. Message status updated (MESSAGES_UPDATE)
+  if (event === 'messages.update' || event === 'messages_update') {
+    const status = mapEvolutionStatusToMeta(data)
+    if (status) {
+      await handleStatusUpdate(status)
+    }
+  }
+}
+
+function mapEvolutionMessageToMeta(evoData: any): WhatsAppMessage | null {
+  const key = evoData.key
+  const message = evoData.message
+  if (!key || !message) return null
+
+  const from = key.remoteJid.split('@')[0]
+  const id = key.id
+  const timestamp = String(evoData.messageTimestamp || Math.floor(Date.now() / 1000))
+
+  let type = 'text'
+  let text: { body: string } | undefined
+  let image: { id: string; mime_type: string; caption?: string } | undefined
+  let video: { id: string; mime_type: string; caption?: string } | undefined
+  let document: { id: string; mime_type: string; filename?: string; caption?: string } | undefined
+  let audio: { id: string; mime_type: string } | undefined
+  let reaction: { message_id: string; emoji: string } | undefined
+  let interactive: any
+
+  // 1. Text message
+  if (message.conversation) {
+    type = 'text'
+    text = { body: message.conversation }
+  } 
+  // 2. Extended text message (has context/quoted message or links)
+  else if (message.extendedTextMessage) {
+    type = 'text'
+    text = { body: message.extendedTextMessage.text || '' }
+  }
+  // 3. Image Message
+  else if (message.imageMessage) {
+    type = 'image'
+    image = {
+      id: id,
+      mime_type: message.imageMessage.mimetype || 'image/jpeg',
+      caption: message.imageMessage.caption
+    }
+  }
+  // 4. Video Message
+  else if (message.videoMessage) {
+    type = 'video'
+    video = {
+      id: id,
+      mime_type: message.videoMessage.mimetype || 'video/mp4',
+      caption: message.videoMessage.caption
+    }
+  }
+  // 5. Document Message
+  else if (message.documentMessage) {
+    type = 'document'
+    document = {
+      id: id,
+      mime_type: message.documentMessage.mimetype || 'application/pdf',
+      filename: message.documentMessage.fileName || message.documentMessage.title,
+      caption: message.documentMessage.caption
+    }
+  }
+  // 6. Audio Message
+  else if (message.audioMessage) {
+    type = 'audio'
+    audio = {
+      id: id,
+      mime_type: message.audioMessage.mimetype || 'audio/ogg'
+    }
+  }
+  // 7. Reaction Message
+  else if (message.reactionMessage) {
+    type = 'reaction'
+    reaction = {
+      message_id: message.reactionMessage.key?.id || '',
+      emoji: message.reactionMessage.text || ''
+    }
+  }
+  // 8. Buttons response (quick replies)
+  else if (message.buttonsResponseMessage) {
+    type = 'interactive'
+    interactive = {
+      type: 'button_reply',
+      button_reply: {
+        id: message.buttonsResponseMessage.selectedButtonId || '',
+        title: message.buttonsResponseMessage.selectedDisplayText || ''
+      }
+    }
+  }
+  // 9. List response (interactive lists)
+  else if (message.listResponseMessage) {
+    type = 'interactive'
+    interactive = {
+      type: 'list_reply',
+      list_reply: {
+        id: message.listResponseMessage.singleSelectReply?.selectedRowId || '',
+        title: message.listResponseMessage.title || '',
+        description: message.listResponseMessage.description
+      }
+    }
+  }
+  else {
+    return null
+  }
+
+  // Handle quoted context (swipe replies)
+  let context: { id: string } | undefined
+  const quotedMessage = message.extendedTextMessage?.contextInfo?.stanzaId || 
+                        message.imageMessage?.contextInfo?.stanzaId || 
+                        message.videoMessage?.contextInfo?.stanzaId || 
+                        message.documentMessage?.contextInfo?.stanzaId || 
+                        message.audioMessage?.contextInfo?.stanzaId
+  if (quotedMessage) {
+    context = { id: quotedMessage }
+  }
+
+  return {
+    id,
+    from,
+    timestamp,
+    type,
+    text,
+    image,
+    video,
+    document,
+    audio,
+    reaction,
+    interactive,
+    context
+  }
+}
+
+function mapEvolutionStatusToMeta(evoUpdate: any) {
+  const key = evoUpdate.key
+  const update = evoUpdate.update
+  if (!key || !update) return null
+
+  const id = key.id
+  let statusStr = 'sent'
+  
+  // Map Baileys status integer to Meta string
+  // 2 = SENT, 3 = DELIVERED, 4/5 = READ
+  const statusInt = typeof update.status === 'number' ? update.status : parseInt(update.status)
+  if (statusInt === 2) statusStr = 'sent'
+  else if (statusInt === 3) statusStr = 'delivered'
+  else if (statusInt === 4 || statusInt === 5) statusStr = 'read'
+  else return null
+
+  return {
+    id,
+    status: statusStr,
+    timestamp: String(Math.floor(Date.now() / 1000)),
+    recipient_id: key.remoteJid.split('@')[0]
+  }
+}
+
 
 async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
   if (!body.entry) return
@@ -275,7 +497,8 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           // inserts that need it for NOT NULL FK compliance. Always
           // the admin who saved the WhatsApp config.
           config.user_id,
-          decryptedAccessToken
+          decryptedAccessToken,
+          config.ai_agent_enabled ?? false
         )
       }
     }
@@ -509,7 +732,8 @@ async function processMessage(
   // (contacts, conversations). Always the admin who saved the
   // WhatsApp config; the choice is arbitrary post-017 but stable.
   configOwnerUserId: string,
-  accessToken: string
+  accessToken: string,
+  aiAgentEnabled: boolean = false
 ) {
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
@@ -676,6 +900,19 @@ async function processMessage(
     isFirstInboundMessage,
   })
   const flowConsumed = flowResult.consumed
+
+  // AI agent fallback: when no flow consumed the message, let the AI
+  // respond with a humanized reply using Gemini + CRM context.
+  // Fire-and-forget — must not block the webhook response.
+  if (!flowConsumed && contentText && aiAgentEnabled) {
+    handleAiAgent({
+      accountId,
+      userId: configOwnerUserId,
+      contactId: contactRecord.id,
+      conversationId: conversation.id,
+      messageText: contentText,
+    }).catch((err) => console.error('[ai-agent] dispatch failed:', err))
+  }
 
   // Fire any automations that react to this webhook event. All dispatches
   // run here (not earlier) so the contact, conversation, and inbound
@@ -889,12 +1126,38 @@ async function findOrCreateContact(
   )
 
   if (existingContact) {
-    // Update name if it changed
+    // Build the set of fields to patch. We always check both name and phone
+    // so a single UPDATE covers both when both change.
+    const patch: Record<string, string> = {}
+
+    // Update name if it changed (e.g. contact renamed themselves on WA).
     if (name && name !== existingContact.name) {
+      patch.name = name
+    }
+
+    // Correct the stored phone when we found the contact via a fuzzy
+    // last-8-digit match but the stored number differs from the exact JID
+    // phone. This self-heals contacts that were manually created with a
+    // local/short number (e.g. missing country code "55" for Brazil):
+    // the very next inbound message will update the number to the correct
+    // international format so outbound sends stop failing with
+    // "exists: false" from the Evolution API.
+    if (phone && existingContact.phone !== phone) {
+      console.log(
+        `[webhook] correcting contact phone: ${existingContact.phone} → ${phone} (id: ${existingContact.id})`
+      )
+      patch.phone = phone
+    }
+
+    if (Object.keys(patch).length > 0) {
+      patch.updated_at = new Date().toISOString()
       await supabaseAdmin()
         .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
+        .update(patch)
         .eq('id', existingContact.id)
+      // Return the contact with the corrected phone so the outbound
+      // path in this same request already has the right number.
+      return { contact: { ...existingContact, ...patch }, wasCreated: false }
     }
     return { contact: existingContact, wasCreated: false }
   }

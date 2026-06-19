@@ -1,16 +1,17 @@
-/**
- * Meta WhatsApp Cloud API helpers.
- *
- * Every function takes a single options object (named parameters) instead
- * of positional arguments. This was a deliberate choice after the same
- * swapped-args bug was found four times in a row with the positional form
- * (e.g. `(accessToken, phoneNumberId)` vs `(phoneNumberId, accessToken)`).
- * With named params, a typo surfaces immediately as a TypeScript error
- * instead of a runtime rejection from Meta.
- */
+import { createClient } from '@supabase/supabase-js'
+import type { MessageTemplate } from '@/types'
+import {
+  buildSendComponents,
+  type SendTimeParams,
+} from './template-send-builder'
 
-const META_API_VERSION = 'v21.0'
-const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
+const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080'
+
+function getEvolutionApiKey(): string {
+  const apiKey = process.env.EVOLUTION_API_KEY || ''
+  if (!apiKey) throw new Error('EVOLUTION_API_KEY environment variable not set')
+  return apiKey
+}
 
 export interface MetaSendResult {
   messageId: string
@@ -27,15 +28,22 @@ interface MetaErrorResponse {
   error?: { message?: string; code?: number; type?: string }
 }
 
-async function throwMetaError(response: Response, fallback: string): Promise<never> {
-  let message = fallback
-  try {
-    const data = (await response.json()) as MetaErrorResponse
-    if (data.error?.message) message = data.error.message
-  } catch {
-    // response body wasn't JSON — keep the fallback
+let _adminClient: any = null
+function getSupabaseAdmin() {
+  if (!_adminClient) {
+    _adminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
   }
-  throw new Error(message)
+  return _adminClient
+}
+
+function getHeaders(accessToken?: string) {
+  return {
+    'Content-Type': 'application/json',
+    'apikey': accessToken || getEvolutionApiKey(),
+  }
 }
 
 // ============================================================
@@ -47,112 +55,110 @@ export interface VerifyPhoneNumberArgs {
   accessToken: string
 }
 
-/**
- * Verify a Meta phone number ID by fetching its public metadata
- * (display_phone_number, verified_name, quality_rating).
- */
 export async function verifyPhoneNumber(
   args: VerifyPhoneNumberArgs
 ): Promise<MetaPhoneInfo> {
   const { phoneNumberId, accessToken } = args
-  const url = `${META_API_BASE}/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  if (!response.ok) {
-    await throwMetaError(response, `Meta API error: ${response.status}`)
+  const headers = getHeaders(accessToken)
+
+  try {
+    const fetchUrl = `${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${phoneNumberId}`
+    const response = await fetch(fetchUrl, { headers })
+    if (response.ok) {
+      const data = await response.json()
+      const instance = Array.isArray(data) ? data[0] : data
+      if (instance && instance.name === phoneNumberId) {
+        return {
+          id: phoneNumberId,
+          display_phone_number: instance.number || phoneNumberId,
+          verified_name: phoneNumberId,
+          quality_rating: 'GREEN'
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching instance:', err)
   }
-  return response.json()
+
+  // Create instance if not exists
+  const createUrl = `${EVOLUTION_API_URL}/instance/create`
+  const createRes = await fetch(createUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': getEvolutionApiKey(), // creation needs global api key
+    },
+    body: JSON.stringify({
+      instanceName: phoneNumberId,
+      token: accessToken || undefined,
+      qrcode: true,
+      integration: 'WHATSAPP-BAILEYS'
+    })
+  })
+
+  if (!createRes.ok) {
+    const errText = await createRes.text()
+    throw new Error(`Failed to create Evolution instance: ${errText || createRes.statusText}`)
+  }
+
+  return {
+    id: phoneNumberId,
+    display_phone_number: phoneNumberId,
+    verified_name: phoneNumberId,
+    quality_rating: 'GREEN'
+  }
 }
 
 // ============================================================
-// Cloud API registration (subscription for inbound webhooks)
+// Webhook Registration
 // ============================================================
-//
-// Saving a phone_number_id + access_token to whatsapp_config is NOT
-// enough to receive inbound events from Meta. Two extra calls are
-// required:
-//
-//   POST /{phone_number_id}/register
-//     Subscribes the number for THIS app's webhook. Requires a
-//     6-digit 2FA PIN the user previously set in Meta WhatsApp
-//     Manager → Two-step verification. Without /register, inbound
-//     events are routed to whichever app last claimed the number
-//     (often the one that did Embedded Signup) — so a second user
-//     adding a second number under the same WABA silently loses
-//     every inbound message.
-//
-//   POST /{waba_id}/subscribed_apps
-//     Subscribes the WABA itself to this app. Required exactly
-//     once per WABA, but idempotent so calling on every save is
-//     safe and cheap.
-//
-// Both calls are no-ops when already done — Meta returns success +
-// the helpers below treat that as success.
 
 export interface RegisterPhoneNumberArgs {
   phoneNumberId: string
   accessToken: string
-  /**
-   * 6-digit PIN the user set in Meta WhatsApp Manager →
-   * Two-step verification. If 2FA is not enabled on the number,
-   * Meta rejects /register with a clear error and the user is
-   * pointed at the right setting in the UI.
-   */
   pin: string
 }
 
 export interface RegisterPhoneNumberResult {
   success: boolean
-  /**
-   * True when Meta indicated the number was already registered to
-   * THIS app — same outcome as a fresh registration from the
-   * caller's POV, surfaced separately for logging clarity.
-   */
   alreadyRegistered: boolean
 }
 
-/**
- * Register a phone number for inbound webhook events.
- *
- * Errors that should be surfaced verbatim to the user:
- *   * Missing / wrong PIN  → "Two-step verification PIN required..."
- *   * No 2FA enabled       → "Two-factor authentication is not on..."
- *   * Number on other app  → "Number is registered to another app..."
- */
 export async function registerPhoneNumber(
   args: RegisterPhoneNumberArgs
 ): Promise<RegisterPhoneNumberResult> {
-  const { phoneNumberId, accessToken, pin } = args
-  const url = `${META_API_BASE}/${phoneNumberId}/register`
+  const { phoneNumberId, accessToken } = args
+  
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+  const webhookUrl = `${siteUrl}/api/whatsapp/webhook?token=${encodeURIComponent(accessToken)}`
+  
+  const url = `${EVOLUTION_API_URL}/webhook/set/${phoneNumberId}`
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({ messaging_product: 'whatsapp', pin }),
+    headers: getHeaders(accessToken),
+    body: JSON.stringify({
+      webhook: {
+        enabled: true,
+        url: webhookUrl,
+        byEvents: false,
+        base64: false,
+        events: [
+          'QRCODE_UPDATED',
+          'MESSAGES_UPSERT',
+          'MESSAGES_UPDATE',
+          'MESSAGES_DELETE',
+          'CONNECTION_UPDATE'
+        ]
+      }
+    })
   })
 
-  if (response.ok) {
-    return { success: true, alreadyRegistered: false }
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Failed to configure webhook: ${errorText || response.statusText}`)
   }
 
-  // Meta returns an error envelope with a code. Code 133005 + the
-  // text "already registered" appears when the number is already
-  // subscribed to this app — that's success from the caller's
-  // perspective, surface it as such.
-  let data: { error?: { message?: string; code?: number; error_subcode?: number } } = {}
-  try {
-    data = await response.json()
-  } catch {
-    /* keep empty */
-  }
-  const message = data.error?.message ?? `Meta API error: ${response.status}`
-  if (/already.*registered/i.test(message)) {
-    return { success: true, alreadyRegistered: true }
-  }
-  throw new Error(message)
+  return { success: true, alreadyRegistered: false }
 }
 
 export interface SubscribeWabaToAppArgs {
@@ -160,22 +166,10 @@ export interface SubscribeWabaToAppArgs {
   accessToken: string
 }
 
-/**
- * Subscribe the WABA to this Meta app's webhook. Idempotent — Meta
- * returns success even when the subscription already exists.
- */
 export async function subscribeWabaToApp(
   args: SubscribeWabaToAppArgs
 ): Promise<void> {
-  const { wabaId, accessToken } = args
-  const url = `${META_API_BASE}/${wabaId}/subscribed_apps`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  if (!response.ok) {
-    await throwMetaError(response, `Meta API error: ${response.status}`)
-  }
+  // No-op for Evolution API
 }
 
 export interface GetSubscribedAppsArgs {
@@ -191,24 +185,17 @@ export interface SubscribedApp {
   }
 }
 
-/**
- * Diagnostic — fetch the list of apps currently subscribed to this
- * WABA. The UI uses this to confirm OUR app is in the list when
- * the user clicks Verify Registration.
- */
 export async function getSubscribedApps(
   args: GetSubscribedAppsArgs
 ): Promise<SubscribedApp[]> {
-  const { wabaId, accessToken } = args
-  const url = `${META_API_BASE}/${wabaId}/subscribed_apps`
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  if (!response.ok) {
-    await throwMetaError(response, `Meta API error: ${response.status}`)
-  }
-  const data = (await response.json()) as { data?: SubscribedApp[] }
-  return data.data ?? []
+  return [
+    {
+      whatsapp_business_api_data: {
+        id: 'evolution-api',
+        name: 'Evolution API',
+      }
+    }
+  ]
 }
 
 // ============================================================
@@ -220,43 +207,55 @@ export interface SendTextMessageArgs {
   accessToken: string
   to: string
   text: string
-  /** Meta's message_id of the message being replied to. Adds a `context` field
-   *  so WhatsApp renders the new message as a reply with a quote preview. */
   contextMessageId?: string
 }
 
-/**
- * Send a free-form WhatsApp text message.
- * Only works inside the 24-hour customer service window.
- */
 export async function sendTextMessage(
   args: SendTextMessageArgs
 ): Promise<MetaSendResult> {
   const { phoneNumberId, accessToken, to, text, contextMessageId } = args
-  const url = `${META_API_BASE}/${phoneNumberId}/messages`
-  const body: Record<string, unknown> = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to,
-    type: 'text',
-    text: { body: text },
+  const url = `${EVOLUTION_API_URL}/message/sendText/${phoneNumberId}`
+  
+  // Use full JID format to bypass Evolution API's WhatsApp number-existence
+  // check — bare digits trigger an "exists: false" validation that can fail
+  // even for contacts who just sent you a message.
+  const digits = to.replace(/\D/g, '')
+  const jid = `${digits}@s.whatsapp.net`
+
+  const body: Record<string, any> = {
+    number: jid,
+    text,
   }
+
   if (contextMessageId) {
-    body.context = { message_id: contextMessageId }
+    body.options = {
+      quoted: {
+        key: {
+          remoteJid: jid,
+          fromMe: false,
+          id: contextMessageId
+        },
+        message: {
+          conversation: ''
+        }
+      }
+    }
   }
+
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
+    headers: getHeaders(accessToken),
     body: JSON.stringify(body),
   })
+
   if (!response.ok) {
-    await throwMetaError(response, `Meta API error: ${response.status}`)
+    const errText = await response.text()
+    throw new Error(`Evolution API sendText error: ${errText || response.statusText}`)
   }
+
   const data = await response.json()
-  return { messageId: data.messages[0].id }
+  const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
+  return { messageId }
 }
 
 export type MediaKind = 'image' | 'video' | 'document'
@@ -266,62 +265,67 @@ export interface SendMediaMessageArgs {
   accessToken: string
   to: string
   kind: MediaKind
-  /** Public URL Meta fetches at send time. */
   link: string
-  /** Optional caption — Meta caps at 1024 chars. Documents + images + videos all accept it. */
   caption?: string
-  /** Document-only. Shown in the recipient's chat as the file name. Ignored for image/video. */
   filename?: string
   contextMessageId?: string
 }
 
-/**
- * Send an image, video, or document via a public URL.
- *
- * Used by the Flows engine's `send_media` node. Mirrors
- * `sendTextMessage` — single fetch, throws on non-2xx, returns Meta's
- * message id.
- */
 export async function sendMediaMessage(
   args: SendMediaMessageArgs,
 ): Promise<MetaSendResult> {
   const { phoneNumberId, accessToken, to, kind, link, caption, filename, contextMessageId } = args
   if (!link) throw new Error('sendMediaMessage requires a link.')
-  const url = `${META_API_BASE}/${phoneNumberId}/messages`
+  const url = `${EVOLUTION_API_URL}/message/sendMedia/${phoneNumberId}`
 
-  const media: Record<string, unknown> = { link }
-  if (caption) media.caption = caption
-  if (kind === 'document' && filename) media.filename = filename
+  let mimetype = 'application/octet-stream'
+  if (kind === 'image') mimetype = 'image/jpeg'
+  else if (kind === 'video') mimetype = 'video/mp4'
+  else if (kind === 'document') mimetype = 'application/pdf'
 
-  const body: Record<string, unknown> = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to,
-    type: kind,
-    [kind]: media,
+  // Use full JID format — same reason as sendTextMessage above.
+  const digits = to.replace(/\D/g, '')
+  const jid = `${digits}@s.whatsapp.net`
+
+  const body: Record<string, any> = {
+    number: jid,
+    mediatype: kind,
+    mimetype,
+    media: link,
+    caption: caption || '',
+    fileName: filename || undefined
   }
-  if (contextMessageId) body.context = { message_id: contextMessageId }
+
+  if (contextMessageId) {
+    body.options = {
+      quoted: {
+        key: {
+          remoteJid: jid,
+          fromMe: false,
+          id: contextMessageId
+        },
+        message: {
+          conversation: ''
+        }
+      }
+    }
+  }
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
+    headers: getHeaders(accessToken),
     body: JSON.stringify(body),
   })
-  if (!response.ok) {
-    await throwMetaError(response, `Meta API error: ${response.status}`)
-  }
-  const data = await response.json()
-  return { messageId: data.messages[0].id }
-}
 
-import type { MessageTemplate } from '@/types'
-import {
-  buildSendComponents,
-  type SendTimeParams,
-} from './template-send-builder'
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`Evolution API sendMedia error: ${errText || response.statusText}`)
+  }
+
+  const data = await response.json()
+  const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
+  return { messageId }
+}
 
 export interface SendTemplateMessageArgs {
   phoneNumberId: string
@@ -329,114 +333,108 @@ export interface SendTemplateMessageArgs {
   to: string
   templateName: string
   language?: string
-  /**
-   * Legacy body-only params. Kept for backward compat with callers
-   * that haven't migrated to the structured `template` + `messageParams`
-   * pair below. New callers should pass `template` so media headers
-   * and URL buttons land on the send.
-   */
   params?: string[]
-  /**
-   * The template row from message_templates. When provided, the helper
-   * builds the full components array (header + body + buttons) via
-   * buildSendComponents — that's the only way image/video/document
-   * headers and URL-with-variable buttons actually reach the recipient.
-   */
   template?: MessageTemplate
-  /**
-   * Structured per-send values. Body variables go in `body`; header
-   * text variables in `headerText`; media overrides in
-   * `headerMediaUrl` / `headerMediaId`; URL/COPY_CODE button values
-   * in `buttonParams` keyed by index.
-   */
   messageParams?: SendTimeParams
-  /** Meta's message_id of the message being replied to. */
   contextMessageId?: string
 }
 
-/**
- * Send a pre-approved WhatsApp message template. Required outside
- * the 24-hour window and for any first-touch messaging.
- *
- * Caller paths:
- *   - Legacy: pass `params: string[]` (body only). Same behaviour as
- *     before this helper learned about media + buttons.
- *   - Structured: pass `template` (and optionally `messageParams`).
- *     The full components array is built from the row so media
- *     headers + URL buttons land correctly.
- */
 export async function sendTemplateMessage(
   args: SendTemplateMessageArgs
 ): Promise<MetaSendResult> {
-  const {
-    phoneNumberId,
-    accessToken,
-    to,
-    templateName,
-    language = 'en_US',
-    params,
-    template,
-    messageParams,
-    contextMessageId,
-  } = args
-  const url = `${META_API_BASE}/${phoneNumberId}/messages`
+  const { phoneNumberId, accessToken, to, templateName, params, template, messageParams, contextMessageId } = args
 
-  const templatePayload: Record<string, unknown> = {
-    name: templateName,
-    language: { code: language },
+  // Render template locally to plain text/media
+  const compiled = compileTemplateToText(template, templateName, params, messageParams)
+
+  if (compiled.mediaUrl && compiled.mediaKind) {
+    return sendMediaMessage({
+      phoneNumberId,
+      accessToken,
+      to,
+      kind: compiled.mediaKind,
+      link: compiled.mediaUrl,
+      caption: compiled.text,
+      contextMessageId
+    })
+  } else {
+    return sendTextMessage({
+      phoneNumberId,
+      accessToken,
+      to,
+      text: compiled.text,
+      contextMessageId
+    })
   }
+}
+
+function compileTemplateToText(
+  template: MessageTemplate | undefined,
+  templateName: string,
+  params?: string[],
+  messageParams?: SendTimeParams
+): { text: string; mediaUrl?: string; mediaKind?: MediaKind } {
+  let text = ''
+  let mediaUrl: string | undefined
+  let mediaKind: MediaKind | undefined
 
   if (template) {
-    const components = buildSendComponents(template, {
-      // Legacy callers pass body values in `params`; fold them into
-      // `messageParams.body` so the new path covers them too.
-      body: messageParams?.body ?? params,
-      headerText: messageParams?.headerText,
-      headerMediaUrl: messageParams?.headerMediaUrl,
-      headerMediaId: messageParams?.headerMediaId,
-      buttonParams: messageParams?.buttonParams,
-    })
-    if (components.length > 0) {
-      templatePayload.components = components
+    // 1. Header
+    const headerType = template.header_type
+    if (headerType === 'text' && template.header_content) {
+      let headerText = template.header_content
+      if (messageParams?.headerText) {
+        headerText = headerText.replace(/\{\{1\}\}/g, messageParams.headerText)
+      }
+      text += `*${headerText}*\n\n`
+    } else if (headerType && headerType !== 'text') {
+      mediaUrl = messageParams?.headerMediaUrl ?? template.header_media_url ?? undefined
+      mediaKind = headerType as MediaKind
     }
-  } else if (params && params.length > 0) {
-    // Legacy body-only path — no template row available.
-    templatePayload.components = [
-      {
-        type: 'body',
-        parameters: params.map((p) => ({ type: 'text', text: String(p) })),
-      },
-    ]
+
+    // 2. Body
+    let bodyText = template.body_text
+    const bodyValues = messageParams?.body ?? params ?? []
+    bodyValues.forEach((val, idx) => {
+      bodyText = bodyText.replace(new RegExp(`\\{\\{${idx + 1}\\}\\}`, 'g'), val)
+    })
+    text += bodyText
+
+    // 3. Footer
+    if (template.footer_text) {
+      text += `\n\n_${template.footer_text}_`
+    }
+
+    // 4. Buttons
+    if (template.buttons && Array.isArray(template.buttons)) {
+      template.buttons.forEach((btn, idx) => {
+        if (btn.type === 'URL') {
+          let url = btn.url
+          const override = messageParams?.buttonParams?.[idx]
+          if (override) {
+            url = url.replace(/\{\{1\}\}/g, override)
+          }
+          text += `\n\n🔗 *${btn.text}*: ${url}`
+        } else if (btn.type === 'COPY_CODE') {
+          const code = messageParams?.buttonParams?.[idx]?.trim() || btn.example || ''
+          text += `\n\n🎟️ *${btn.text}*: \`${code}\``
+        } else if (btn.type === 'QUICK_REPLY') {
+          text += `\n\n🔘 *${btn.text}* (responda com "${btn.text}")`
+        }
+      })
+    }
+  } else {
+    text = templateName
+    if (params && params.length > 0) {
+      text += '\n' + params.join('\n')
+    }
   }
 
-  const body: Record<string, unknown> = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to,
-    type: 'template',
-    template: templatePayload,
-  }
-  if (contextMessageId) {
-    body.context = { message_id: contextMessageId }
-  }
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(body),
-  })
-  if (!response.ok) {
-    await throwMetaError(response, `Meta API error: ${response.status}`)
-  }
-  const data = await response.json()
-  return { messageId: data.messages[0].id }
+  return { text, mediaUrl, mediaKind }
 }
 
 // ============================================================
-// Template submission (Business Management API)
+// Template submission (Business Management API) - MOCKED for Local Use
 // ============================================================
 
 import type { MetaTemplateSubmitPayload } from './template-components'
@@ -453,53 +451,20 @@ export interface SubmitMessageTemplateResult {
   category?: string
 }
 
-/**
- * Submit a message template to Meta for approval.
- *
- * Returns Meta's assigned template id + initial status (typically
- * PENDING). Caller persists `id` as `meta_template_id` so the
- * upcoming edit/delete flows can scope to this exact template (and
- * language variant) via `hsm_id`, rather than nuking every variant
- * with the same name.
- *
- * 429s from Meta (rate limit: 100 creates/hour/WABA) surface as a
- * regular `Error('Meta API error: 429')`. The route handler
- * distinguishes 429 and shows a more actionable toast.
- */
 export async function submitMessageTemplate(
   args: SubmitMessageTemplateArgs
 ): Promise<SubmitMessageTemplateResult> {
-  const { wabaId, accessToken, payload } = args
-  const url = `${META_API_BASE}/${wabaId}/message_templates`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(payload),
-  })
-  if (!response.ok) {
-    await throwMetaError(response, `Meta API error: ${response.status}`)
-  }
-  const data = await response.json()
-  if (!data?.id) {
-    throw new Error('Meta accepted the template but returned no id.')
-  }
   return {
-    id: String(data.id),
-    status: typeof data.status === 'string' ? data.status : 'PENDING',
-    category: typeof data.category === 'string' ? data.category : undefined,
+    id: `evo-tpl-${Date.now()}`,
+    status: 'APPROVED',
+    category: args.payload.category || 'UTILITY'
   }
 }
 
 export interface EditMessageTemplateArgs {
-  /** Meta's template id (stored locally as `meta_template_id`). */
   metaTemplateId: string
   accessToken: string
-  /** Send the full components array — Meta replaces, not patches. */
   components: MetaTemplateSubmitPayload['components']
-  /** Optional — only certain category transitions are allowed by Meta. */
   category?: MetaTemplateSubmitPayload['category']
 }
 
@@ -507,71 +472,23 @@ export interface EditMessageTemplateResult {
   success: boolean
 }
 
-/**
- * Edit an existing (APPROVED or REJECTED) message template.
- *
- * Meta caps edits at 10 per 30 days (and 1 per 24h for APPROVED
- * templates). Every edit re-triggers review, so the status flips
- * back to PENDING until Meta approves the new components.
- *
- * Note: PENDING / DISABLED / IN_APPEAL templates cannot be edited
- * — the route handler enforces that before calling here.
- */
 export async function editMessageTemplate(
   args: EditMessageTemplateArgs
 ): Promise<EditMessageTemplateResult> {
-  const { metaTemplateId, accessToken, components, category } = args
-  const body: Record<string, unknown> = { components }
-  if (category) body.category = category
-  const response = await fetch(`${META_API_BASE}/${metaTemplateId}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(body),
-  })
-  if (!response.ok) {
-    await throwMetaError(response, `Meta API error: ${response.status}`)
-  }
-  const data = await response.json().catch(() => ({}))
-  return { success: data?.success !== false }
+  return { success: true }
 }
 
 export interface DeleteMessageTemplateArgs {
   wabaId: string
   accessToken: string
   name: string
-  /**
-   * Without `hsm_id`, Meta deletes EVERY language variant of the
-   * template with this `name`. Pass the row's `meta_template_id`
-   * to scope to a single variant.
-   */
   metaTemplateId?: string
 }
 
-/**
- * Delete a message template on Meta. Pass `metaTemplateId` to scope
- * to a single language variant — otherwise Meta nukes every variant
- * sharing the same `name`.
- */
 export async function deleteMessageTemplate(
   args: DeleteMessageTemplateArgs
 ): Promise<void> {
-  const { wabaId, accessToken, name, metaTemplateId } = args
-  const params = new URLSearchParams({ name })
-  if (metaTemplateId) params.set('hsm_id', metaTemplateId)
-  const url = `${META_API_BASE}/${wabaId}/message_templates?${params.toString()}`
-  const response = await fetch(url, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  // Treat a 404 as a no-op — the template is already gone on Meta's
-  // side, and we still want the local row removed.
-  if (response.status === 404) return
-  if (!response.ok) {
-    await throwMetaError(response, `Meta API error: ${response.status}`)
-  }
+  // No-op
 }
 
 // ============================================================
@@ -582,59 +499,50 @@ export interface SendReactionMessageArgs {
   phoneNumberId: string
   accessToken: string
   to: string
-  /** Meta's message_id of the message being reacted to. */
   targetMessageId: string
-  /** Single emoji, or empty string to remove an existing reaction. */
   emoji: string
 }
 
-/**
- * Send a reaction (or removal) to a previously-exchanged message.
- * Empty `emoji` removes the reaction per Meta's spec.
- */
 export async function sendReactionMessage(
   args: SendReactionMessageArgs
 ): Promise<MetaSendResult> {
   const { phoneNumberId, accessToken, to, targetMessageId, emoji } = args
-  const url = `${META_API_BASE}/${phoneNumberId}/messages`
+  const url = `${EVOLUTION_API_URL}/message/sendReaction/${phoneNumberId}`
+
+  if (!emoji) {
+    throw new Error('Reactions in Evolution API require an emoji')
+  }
+
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
+    headers: getHeaders(accessToken),
     body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to,
-      type: 'reaction',
-      reaction: { message_id: targetMessageId, emoji },
+      remoteJid: `${to.replace(/\D/g, '')}@s.whatsapp.net`,
+      reaction: {
+        text: emoji,
+        key: {
+          remoteJid: `${to.replace(/\D/g, '')}@s.whatsapp.net`,
+          fromMe: false,
+          id: targetMessageId
+        }
+      }
     }),
   })
+
   if (!response.ok) {
-    await throwMetaError(response, `Meta API error: ${response.status}`)
+    const errText = await response.text()
+    throw new Error(`Evolution API sendReaction error: ${errText || response.statusText}`)
   }
+
   const data = await response.json()
-  return { messageId: data.messages[0].id }
+  const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
+  return { messageId }
 }
 
 // ============================================================
 // Interactive (button replies + list messages)
 // ============================================================
-//
-// Meta's two flavours of interactive message — used by the Flows
-// engine to drive scripted chatbot menus. Caller passes plain
-// JS values; helpers shape the Meta payload and enforce Meta's
-// limits BEFORE the network call so the failure mode is a
-// developer-facing error rather than a customer-facing one.
 
-/**
- * Meta limits for interactive messages, hard-coded so violations
- * fail at build/save time rather than as a 400 from the Meta API
- * mid-conversation. See:
- *   https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-reply-buttons-messages
- *   https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-list-messages
- */
 export const INTERACTIVE_LIMITS = {
   maxButtons: 3,
   buttonTitleMaxLength: 20,
@@ -648,9 +556,7 @@ export const INTERACTIVE_LIMITS = {
 } as const
 
 export interface InteractiveButton {
-  /** Stable id sent back in the webhook when tapped (≤ 256 chars). */
   id: string
-  /** Visible label (≤ 20 chars per Meta). */
   title: string
 }
 
@@ -658,99 +564,67 @@ export interface SendInteractiveButtonsArgs {
   phoneNumberId: string
   accessToken: string
   to: string
-  /** The body text — what the customer reads above the buttons. */
   bodyText: string
-  /** Optional plain-text header (≤ 60 chars). */
   headerText?: string
-  /** Optional grey footer line under the buttons (≤ 60 chars). */
   footerText?: string
-  /** 1–3 buttons. Validated against Meta's limits before sending. */
   buttons: InteractiveButton[]
-  /** Meta's message_id of the message being replied to (quote preview). */
   contextMessageId?: string
 }
 
-/**
- * Send an interactive message with up to 3 inline reply buttons. The
- * customer taps one and Meta delivers a webhook with
- * `messages[0].interactive.button_reply.id` set to the matching button.id.
- *
- * Validation throws BEFORE the network call so misconfigured flows
- * fail at save time, not during a live conversation.
- */
 export async function sendInteractiveButtons(
   args: SendInteractiveButtonsArgs
 ): Promise<MetaSendResult> {
-  const {
-    phoneNumberId, accessToken, to,
-    bodyText, headerText, footerText, buttons, contextMessageId,
-  } = args
-  validateInteractiveBody(bodyText)
-  validateInteractiveHeaderFooter(headerText, footerText)
-  if (buttons.length < 1 || buttons.length > INTERACTIVE_LIMITS.maxButtons) {
-    throw new Error(
-      `Interactive button message requires 1-${INTERACTIVE_LIMITS.maxButtons} buttons (got ${buttons.length}).`
-    )
+  const { phoneNumberId, accessToken, to, bodyText, headerText, footerText, buttons, contextMessageId } = args
+
+  const digits = to.replace(/\D/g, '')
+  const jid = `${digits}@s.whatsapp.net`
+  const url = `${EVOLUTION_API_URL}/message/sendButtons/${phoneNumberId}`
+
+  const payload: Record<string, any> = {
+    number: jid,
+    title: headerText || bodyText.slice(0, INTERACTIVE_LIMITS.headerTextMaxLength),
+    description: bodyText,
+    footer: footerText || ' ',
+    buttons: buttons.map((b) => ({
+      title: b.title,
+      displayText: b.title,
+      id: b.id,
+    })),
   }
-  for (const btn of buttons) {
-    if (!btn.id) throw new Error('Interactive button missing id.')
-    if (!btn.title) throw new Error(`Interactive button "${btn.id}" missing title.`)
-    if (btn.title.length > INTERACTIVE_LIMITS.buttonTitleMaxLength) {
-      throw new Error(
-        `Interactive button title "${btn.title}" exceeds ${INTERACTIVE_LIMITS.buttonTitleMaxLength} chars.`
-      )
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: getHeaders(accessToken),
+      body: JSON.stringify(payload),
+    })
+    if (response.ok) {
+      const data = await response.json()
+      const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
+      return { messageId }
     }
+  } catch {
+    // fall through to text fallback
   }
 
-  const interactive: Record<string, unknown> = {
-    type: 'button',
-    body: { text: bodyText },
-    action: {
-      buttons: buttons.map((b) => ({
-        type: 'reply',
-        reply: { id: b.id, title: b.title },
-      })),
-    },
-  }
-  if (headerText) interactive.header = { type: 'text', text: headerText }
-  if (footerText) interactive.footer = { text: footerText }
-
-  const body: Record<string, unknown> = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to,
-    type: 'interactive',
-    interactive,
-  }
-  if (contextMessageId) body.context = { message_id: contextMessageId }
-
-  const url = `${META_API_BASE}/${phoneNumberId}/messages`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(body),
+  // Fallback: send as rich text (WhatsApp Web / older Evolution API)
+  let text = bodyText
+  if (headerText) text = `*${headerText}*\n\n${text}`
+  if (footerText) text = `${text}\n\n_${footerText}_`
+  text += '\n'
+  buttons.forEach((btn, i) => {
+    text += `\n${i + 1}. ${btn.title}`
   })
-  if (!response.ok) {
-    await throwMetaError(response, `Meta API error: ${response.status}`)
-  }
-  const data = await response.json()
-  return { messageId: data.messages[0].id }
+  return sendTextMessage({ phoneNumberId, accessToken, to, text, contextMessageId })
 }
 
 export interface InteractiveListRow {
-  /** Stable id sent back in the webhook when tapped (≤ 200 chars). */
   id: string
-  /** Visible row title (≤ 24 chars per Meta). */
   title: string
-  /** Optional secondary line shown under the title (≤ 72 chars). */
   description?: string
 }
 
 export interface InteractiveListSection {
-  /** Optional section header shown above its rows. */
   title?: string
   rows: InteractiveListRow[]
 }
@@ -760,145 +634,76 @@ export interface SendInteractiveListArgs {
   accessToken: string
   to: string
   bodyText: string
-  /** Label of the tap-to-expand button on the message bubble. */
   buttonLabel: string
   headerText?: string
   footerText?: string
-  /**
-   * 1–10 rows TOTAL across all sections. Meta caps the *total*, not
-   * per-section. Validation enforces this before send.
-   */
   sections: InteractiveListSection[]
   contextMessageId?: string
 }
 
-/**
- * Send an interactive message with a tap-to-expand list of selectable
- * rows. Use when there are more options than the 3-button limit allows.
- * Webhook arrives with `messages[0].interactive.list_reply.id` set to
- * the matching row.id.
- */
 export async function sendInteractiveList(
   args: SendInteractiveListArgs
 ): Promise<MetaSendResult> {
-  const {
-    phoneNumberId, accessToken, to,
-    bodyText, buttonLabel, headerText, footerText, sections, contextMessageId,
-  } = args
-  validateInteractiveBody(bodyText)
-  validateInteractiveHeaderFooter(headerText, footerText)
-  if (!buttonLabel) throw new Error('Interactive list requires a buttonLabel.')
-  if (buttonLabel.length > INTERACTIVE_LIMITS.buttonTitleMaxLength) {
-    throw new Error(
-      `Interactive list buttonLabel "${buttonLabel}" exceeds ${INTERACTIVE_LIMITS.buttonTitleMaxLength} chars.`
-    )
+  const { phoneNumberId, accessToken, to, bodyText, buttonLabel, headerText, footerText, sections, contextMessageId } = args
+
+  const digits = to.replace(/\D/g, '')
+  const jid = `${digits}@s.whatsapp.net`
+  const url = `${EVOLUTION_API_URL}/message/sendList/${phoneNumberId}`
+
+  const payload: Record<string, any> = {
+    number: jid,
+    title: headerText ?? '',
+    description: bodyText,
+    buttonText: buttonLabel,
+    values: sections.map((s) => ({
+      title: s.title ?? '',
+      rows: s.rows.map((r) => ({
+        title: r.title,
+        description: r.description,
+        rowId: r.id,
+      })),
+    })),
   }
-  if (sections.length < 1 || sections.length > INTERACTIVE_LIMITS.maxListSections) {
-    throw new Error(
-      `Interactive list requires 1-${INTERACTIVE_LIMITS.maxListSections} sections (got ${sections.length}).`
-    )
+  if (footerText) payload.footerText = footerText
+  // Evolution API v2.3.7 requires footerText — always send it
+  if (!payload.footerText) payload.footerText = ' '
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: getHeaders(accessToken),
+      body: JSON.stringify(payload),
+    })
+    if (response.ok) {
+      const data = await response.json()
+      const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
+      return { messageId }
+    }
+  } catch {
+    // fall through to text fallback
   }
-  const totalRows = sections.reduce((sum, s) => sum + s.rows.length, 0)
-  if (totalRows < 1 || totalRows > INTERACTIVE_LIMITS.maxListRowsTotal) {
-    throw new Error(
-      `Interactive list requires 1-${INTERACTIVE_LIMITS.maxListRowsTotal} rows total across all sections (got ${totalRows}).`
-    )
-  }
-  const seenIds = new Set<string>()
+
+  // Fallback: send as rich text (WhatsApp Web / older Evolution API).
+  // Include numbered options so the customer can reply with the number.
+  let text = bodyText
+  if (headerText) text = `*${headerText}*\n\n${text}`
+
+  let rowNumber = 1
   for (const section of sections) {
+    if (section.title) text += `\n\n*${section.title}*`
     for (const row of section.rows) {
-      if (!row.id) throw new Error('Interactive list row missing id.')
-      if (seenIds.has(row.id)) {
-        throw new Error(`Interactive list has duplicate row id "${row.id}".`)
-      }
-      seenIds.add(row.id)
-      if (!row.title) throw new Error(`Interactive list row "${row.id}" missing title.`)
-      if (row.title.length > INTERACTIVE_LIMITS.listRowTitleMaxLength) {
-        throw new Error(
-          `Interactive list row title "${row.title}" exceeds ${INTERACTIVE_LIMITS.listRowTitleMaxLength} chars.`
-        )
-      }
-      if (
-        row.description &&
-        row.description.length > INTERACTIVE_LIMITS.listRowDescriptionMaxLength
-      ) {
-        throw new Error(
-          `Interactive list row description for "${row.id}" exceeds ${INTERACTIVE_LIMITS.listRowDescriptionMaxLength} chars.`
-        )
-      }
+      text += `\n${rowNumber}. ${row.title}`
+      if (row.description) text += ` — ${row.description}`
+      rowNumber++
     }
   }
 
-  const interactive: Record<string, unknown> = {
-    type: 'list',
-    body: { text: bodyText },
-    action: {
-      button: buttonLabel,
-      sections: sections.map((s) => ({
-        ...(s.title ? { title: s.title } : {}),
-        rows: s.rows.map((r) => ({
-          id: r.id,
-          title: r.title,
-          ...(r.description ? { description: r.description } : {}),
-        })),
-      })),
-    },
-  }
-  if (headerText) interactive.header = { type: 'text', text: headerText }
-  if (footerText) interactive.footer = { text: footerText }
-
-  const body: Record<string, unknown> = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to,
-    type: 'interactive',
-    interactive,
-  }
-  if (contextMessageId) body.context = { message_id: contextMessageId }
-
-  const url = `${META_API_BASE}/${phoneNumberId}/messages`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(body),
-  })
-  if (!response.ok) {
-    await throwMetaError(response, `Meta API error: ${response.status}`)
-  }
-  const data = await response.json()
-  return { messageId: data.messages[0].id }
-}
-
-function validateInteractiveBody(bodyText: string): void {
-  if (!bodyText) throw new Error('Interactive message requires bodyText.')
-  if (bodyText.length > INTERACTIVE_LIMITS.bodyMaxLength) {
-    throw new Error(
-      `Interactive bodyText exceeds ${INTERACTIVE_LIMITS.bodyMaxLength} chars.`
-    )
-  }
-}
-
-function validateInteractiveHeaderFooter(
-  headerText: string | undefined,
-  footerText: string | undefined,
-): void {
-  if (headerText && headerText.length > INTERACTIVE_LIMITS.headerTextMaxLength) {
-    throw new Error(
-      `Interactive headerText exceeds ${INTERACTIVE_LIMITS.headerTextMaxLength} chars.`
-    )
-  }
-  if (footerText && footerText.length > INTERACTIVE_LIMITS.footerMaxLength) {
-    throw new Error(
-      `Interactive footerText exceeds ${INTERACTIVE_LIMITS.footerMaxLength} chars.`
-    )
-  }
+  if (footerText) text += `\n\n_${footerText}_`
+  return sendTextMessage({ phoneNumberId, accessToken, to, text, contextMessageId })
 }
 
 // ============================================================
-// Media
+// Media Proxy (Resolves via DB lookup and download)
 // ============================================================
 
 export interface GetMediaUrlArgs {
@@ -906,23 +711,13 @@ export interface GetMediaUrlArgs {
   accessToken: string
 }
 
-/**
- * Resolve a media ID to Meta's (short-lived, authenticated) CDN URL
- * plus the MIME type. Step one of the media-proxy flow.
- */
 export async function getMediaUrl(
   args: GetMediaUrlArgs
 ): Promise<{ url: string; mimeType: string }> {
-  const { mediaId, accessToken } = args
-  const response = await fetch(`${META_API_BASE}/${mediaId}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  if (!response.ok) {
-    await throwMetaError(response, `Media fetch failed: ${response.status}`)
+  return {
+    url: `${EVOLUTION_API_URL}/download/${args.mediaId}`,
+    mimeType: 'application/octet-stream'
   }
-  const data = await response.json()
-  if (!data.url) throw new Error('Media URL not found in Meta response')
-  return { url: data.url, mimeType: data.mime_type || 'application/octet-stream' }
 }
 
 export interface DownloadMediaArgs {
@@ -930,22 +725,81 @@ export interface DownloadMediaArgs {
   accessToken: string
 }
 
-/**
- * Fetch the binary bytes for a media URL obtained from getMediaUrl.
- * Step two of the media-proxy flow.
- */
 export async function downloadMedia(
   args: DownloadMediaArgs
 ): Promise<{ buffer: Buffer; contentType: string }> {
   const { downloadUrl, accessToken } = args
-  const response = await fetch(downloadUrl, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  if (!response.ok) {
-    throw new Error(`Media download failed: ${response.status}`)
+  
+  const urlParts = downloadUrl.split('/')
+  const messageId = urlParts[urlParts.length - 1]
+  
+  if (!messageId) {
+    throw new Error(`Invalid download URL: ${downloadUrl}`)
   }
-  const contentType =
-    response.headers.get('content-type') || 'application/octet-stream'
-  const buffer = Buffer.from(await response.arrayBuffer())
+  
+  const supabase = getSupabaseAdmin()
+  
+  // Get message to find conversation
+  const { data: message } = await supabase
+    .from('messages')
+    .select('conversation_id')
+    .eq('message_id', messageId)
+    .maybeSingle()
+    
+  if (!message) {
+    throw new Error(`Message with ID ${messageId} not found.`)
+  }
+  
+  // Get conversation to find contact and account
+  const { data: conversation } = await supabase
+    .from('conversations')
+    .select('contact_id, account_id')
+    .eq('id', message.conversation_id)
+    .maybeSingle()
+    
+  if (!conversation) {
+    throw new Error(`Conversation not found for message ${messageId}.`)
+  }
+  
+  // Get contact phone and config instanceName
+  const [contactRes, configRes] = await Promise.all([
+    supabase.from('contacts').select('phone').eq('id', conversation.contact_id).maybeSingle(),
+    supabase.from('whatsapp_config').select('phone_number_id').eq('account_id', conversation.account_id).maybeSingle()
+  ])
+  
+  const phone = contactRes.data?.phone
+  const instanceName = configRes.data?.phone_number_id
+  
+  if (!phone || !instanceName) {
+    throw new Error(`Could not resolve phone or instanceName for message ${messageId}.`)
+  }
+  
+  const headers = getHeaders(accessToken)
+  const downloadApiUrl = `${EVOLUTION_API_URL}/message/downloadMedia/${instanceName}`
+  
+  const response = await fetch(downloadApiUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      messageKeys: {
+        id: messageId,
+        fromMe: false,
+        remoteJid: `${phone.replace(/\D/g, '')}@s.whatsapp.net`
+      }
+    })
+  })
+  
+  if (!response.ok) {
+    throw new Error(`Evolution API downloadMedia failed: ${response.statusText}`)
+  }
+  
+  const data = await response.json()
+  const base64Data = data?.base64 || (typeof data === 'string' ? data : null)
+  if (!base64Data) {
+    throw new Error(`No media data returned from Evolution API.`)
+  }
+  
+  const buffer = Buffer.from(base64Data, 'base64')
+  const contentType = data?.mimetype || 'application/octet-stream'
   return { buffer, contentType }
 }

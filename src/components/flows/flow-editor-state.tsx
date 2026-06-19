@@ -186,6 +186,41 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
       return { note: "" };
     case "end":
       return {};
+    case "generate_website":
+      return {
+        specs: {
+          empresa_nome_var: "empresa_nome",
+          nicho_var: "nicho",
+          descricao_var: "descricao",
+          cores_var: "cores",
+        },
+        template_type: "sales_page",
+        next_node_key: "",
+      };
+    case "create_payment":
+      return {
+        order_id_var: "website_order_id",
+        payment_value: 197,
+        next_node_key: "",
+      };
+    case "website_order_check":
+      return {
+        order_var: "existing_order",
+        next_node_key: "",
+      };
+    case "schedule_reminder":
+      return {
+        order_id_var: "website_order_id",
+        delay_minutes: 30,
+        message_template: "",
+        next_node_key: "",
+      };
+    case "auto_confirm_payment":
+      return {
+        order_id_var: "website_order_id",
+        delay_seconds: 5,
+        next_node_key: "",
+      };
   }
 }
 

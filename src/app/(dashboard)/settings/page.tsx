@@ -69,9 +69,9 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Settings</h1>
+        <h1 className="text-2xl font-bold text-white">Configurações</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Manage your profile, WhatsApp® integration, message templates, and
+          Gerencie seu perfil, integração com WhatsApp®, templates de mensagem e
           tags.
         </p>
       </div>
@@ -83,14 +83,14 @@ export default function SettingsPage() {
             className="data-active:text-primary text-slate-400 data-active:bg-slate-800"
           >
             <User className="size-4" />
-            Profile
+            Perfil
           </TabsTrigger>
           <TabsTrigger
             value="whatsapp"
             className="data-active:text-primary text-slate-400 data-active:bg-slate-800"
           >
             <Settings className="size-4" />
-            WhatsApp Config
+            Config WhatsApp
           </TabsTrigger>
           <TabsTrigger
             value="templates"
@@ -112,7 +112,7 @@ export default function SettingsPage() {
               className="data-active:text-primary text-slate-400 data-active:bg-slate-800"
             >
               <SlidersHorizontal className="size-4" />
-              Custom Fields
+              Campos Personalizados
             </TabsTrigger>
           )}
           <TabsTrigger
@@ -120,21 +120,21 @@ export default function SettingsPage() {
             className="data-active:text-primary text-slate-400 data-active:bg-slate-800"
           >
             <Coins className="size-4" />
-            Deals
+            Negócios
           </TabsTrigger>
           <TabsTrigger
             value="appearance"
             className="data-active:text-primary text-slate-400 data-active:bg-slate-800"
           >
             <Palette className="size-4" />
-            Appearance
+            Aparência
           </TabsTrigger>
           <TabsTrigger
             value="members"
             className="data-active:text-primary text-slate-400 data-active:bg-slate-800"
           >
             <UsersRound className="size-4" />
-            Members
+            Membros
           </TabsTrigger>
         </TabsList>
 

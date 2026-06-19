@@ -67,26 +67,26 @@ type PeekResult = PeekOk | PeekFail;
 
 const ROLE_LABEL: Record<PeekOk['role'], string> = {
   admin: 'Admin',
-  agent: 'Agent',
-  viewer: 'Viewer',
+  agent: 'Atendente',
+  viewer: 'Visualizador',
 };
 
 const FAIL_COPY: Record<PeekFail['reason'], { title: string; body: string }> = {
   not_found: {
-    title: 'Invite not found',
-    body: 'This link doesn’t match a valid invitation. Double-check the URL or ask the person who invited you to send a new one.',
+    title: 'Convite não encontrado',
+    body: 'Este link não corresponde a um convite válido. Verifique a URL ou peça à pessoa que te convidou para enviar um novo link.',
   },
   used: {
-    title: 'Invite already used',
-    body: 'This invitation has already been accepted. If that wasn’t you, ask the account admin to send a fresh link.',
+    title: 'Convite já utilizado',
+    body: 'Este convite já foi aceito. Se não foi você, peça ao administrador da conta para enviar um novo link.',
   },
   expired: {
-    title: 'Invite expired',
-    body: 'This invitation has expired. Ask the account admin to send a new one — they take a few seconds to generate.',
+    title: 'Convite expirado',
+    body: 'Este convite expirou. Peça ao administrador da conta para enviar um novo — leva apenas alguns segundos para gerar.',
   },
   server_error: {
-    title: 'Something went wrong',
-    body: 'We couldn’t verify this invitation right now. Try refreshing the page in a moment.',
+    title: 'Algo deu errado',
+    body: 'Não foi possível verificar este convite no momento. Tente recarregar a página em instantes.',
   },
 };
 
@@ -183,21 +183,21 @@ export default function JoinPage() {
         if (res.status === 409) {
           setConflictMessage(
             payload.error ||
-              'You are already in another account. Sign in with a different email to join this one.',
+              'Você já está em outra conta. Entre com um e-mail diferente para entrar nesta conta.',
           );
         } else {
-          toast.error(payload.error || 'Failed to accept invitation');
+          toast.error(payload.error || 'Falha ao aceitar convite');
         }
         setAccepting(false);
         return;
       }
-      toast.success('Welcome to the team');
+      toast.success('Bem-vindo(a) à equipe');
       // Full reload (not router.push) so AuthProvider re-fetches
       // the profile with the new account_id and account_role.
       window.location.href = '/dashboard';
     } catch (err) {
       console.error('[join] redeem error:', err);
-      toast.error('Could not reach the server');
+      toast.error('Não foi possível conectar ao servidor');
       setAccepting(false);
     }
   }, [token]);
@@ -212,7 +212,7 @@ export default function JoinPage() {
       window.location.reload();
     } catch (err) {
       console.error('[join] sign-out error:', err);
-      toast.error('Could not sign out. Try refreshing the page.');
+      toast.error('Não foi possível sair. Tente recarregar a página.');
       setSigningOut(false);
     }
   }, []);
@@ -223,7 +223,7 @@ export default function JoinPage() {
       <Card className="w-full max-w-md border-slate-800 bg-slate-900">
         <CardContent className="flex flex-col items-center gap-3 py-12">
           <Loader2 className="size-6 animate-spin text-primary" />
-          <p className="text-sm text-slate-400">Verifying invitation…</p>
+          <p className="text-sm text-slate-400">Verificando convite…</p>
         </CardContent>
       </Card>
     );
@@ -257,14 +257,14 @@ export default function JoinPage() {
                 onClick={loadPeekAndAuth}
                 className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                Try again
+                Tentar novamente
               </Button>
               <Link href="/signup">
                 <Button
                   variant="outline"
                   className="w-full border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
                 >
-                  Create a new account instead
+                  Criar uma nova conta
                 </Button>
               </Link>
             </>
@@ -272,7 +272,7 @@ export default function JoinPage() {
             <>
               <Link href="/signup">
                 <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
-                  Create a new account instead
+                  Criar uma nova conta
                 </Button>
               </Link>
               <Link href="/login">
@@ -280,7 +280,7 @@ export default function JoinPage() {
                   variant="outline"
                   className="w-full border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
                 >
-                  Sign in
+                  Entrar
                 </Button>
               </Link>
             </>
@@ -297,16 +297,16 @@ export default function JoinPage() {
         <UsersRound className="h-6 w-6 text-primary" />
       </div>
       <CardTitle className="text-xl text-white">
-        You&apos;re invited to{' '}
+        Você foi convidado(a) para{' '}
         <span className="text-primary">{peek.account_name}</span>
       </CardTitle>
       <CardDescription className="text-slate-400">
-        You&apos;ll join as{' '}
+        Você entrará como{' '}
         <span className="inline-flex items-center gap-1 text-white">
           <ShieldCheck className="size-3.5 text-primary" />
           {ROLE_LABEL[peek.role]}
         </span>
-        . Link valid until{' '}
+        . Link válido até{' '}
         {new Date(peek.expires_at).toLocaleDateString(undefined, {
           year: 'numeric',
           month: 'short',
@@ -332,19 +332,18 @@ export default function JoinPage() {
               {accepting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Accepting…
+                  Aceitando…
                 </>
               ) : (
                 <>
                   <CheckCircle className="size-4" />
-                  Accept invitation
+                  Aceitar convite
                 </>
               )}
             </Button>
             <p className="text-center text-xs text-slate-500">
-              Accepting moves your login into{' '}
-              <span className="text-slate-400">{peek.account_name}</span>. Your
-              empty personal account from signup will be cleaned up.
+              Aceitar moverá seu login para{' '}
+              <span className="text-slate-400">{peek.account_name}</span>. Sua conta pessoal vazia da criação será removida.
             </p>
           </CardContent>
         </Card>
@@ -363,7 +362,7 @@ export default function JoinPage() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-white">
                 <AlertTriangle className="size-4 text-amber-400" />
-                Can&apos;t join {peek.account_name} with this account
+                Não é possível entrar em {peek.account_name} com esta conta
               </DialogTitle>
               <DialogDescription className="text-slate-400">
                 {conflictMessage}
@@ -371,11 +370,10 @@ export default function JoinPage() {
             </DialogHeader>
             <div className="space-y-2 py-2 text-xs text-slate-500">
               <p>
-                To join{' '}
+                Para entrar em{' '}
                 <span className="text-slate-300">{peek.account_name}</span>,
-                sign out and sign up again with a different email address.
-                The invite link stays valid as long as it hasn&apos;t
-                expired.
+                saia da conta e crie uma nova com um endereço de e-mail diferente.
+                O link de convite continua válido enquanto não expirar.
               </p>
             </div>
             <DialogFooter className="bg-slate-900 border-slate-700">
@@ -384,7 +382,7 @@ export default function JoinPage() {
                 onClick={() => setConflictMessage(null)}
                 className="border-slate-700 text-slate-300 hover:bg-slate-800"
               >
-                Stay signed in
+                Manter sessão
               </Button>
               <Button
                 onClick={handleSignOutAndRetry}
@@ -394,10 +392,10 @@ export default function JoinPage() {
                 {signingOut ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />
-                    Signing out…
+                    Saindo…
                   </>
                 ) : (
-                  'Sign out & use a different email'
+                  'Sair e usar outro e-mail'
                 )}
               </Button>
             </DialogFooter>
@@ -414,7 +412,7 @@ export default function JoinPage() {
       <CardContent className="flex flex-col gap-2">
         <Link href={`/signup?invite=${encodeURIComponent(token!)}`}>
           <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
-            Create account &amp; join
+            Criar conta e participar
           </Button>
         </Link>
         <Link href={`/login?invite=${encodeURIComponent(token!)}`}>
@@ -422,7 +420,7 @@ export default function JoinPage() {
             variant="outline"
             className="w-full border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
           >
-            I already have an account
+            Já tenho uma conta
           </Button>
         </Link>
       </CardContent>

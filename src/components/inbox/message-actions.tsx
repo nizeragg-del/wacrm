@@ -50,14 +50,14 @@ export function MessageActions({
   const handleCopy = async () => {
     const text = message.content_text ?? "";
     if (!text) {
-      toast.error("Nothing to copy");
+      toast.error("Nada para copiar");
       return;
     }
     try {
       await navigator.clipboard.writeText(text);
-      toast.success("Copied");
+      toast.success("Copiado");
     } catch {
-      toast.error("Copy failed");
+      toast.error("Falha ao copiar");
     }
     setTouchOpen(false);
   };

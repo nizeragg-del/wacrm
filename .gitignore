@@ -42,3 +42,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# IDE / tools
+.mimocode/
+.opencode/
+opencode -s*
+
+# dev-only
+test-output/
+scripts/

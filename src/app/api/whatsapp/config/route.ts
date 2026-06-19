@@ -478,3 +478,55 @@ export async function DELETE() {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export async function PATCH(request: Request) {
+  try {
+    const supabase = await createClient()
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const accountId = await resolveAccountId(supabase, user.id)
+    if (!accountId) {
+      return NextResponse.json(
+        { error: 'Your profile is not linked to an account.' },
+        { status: 403 },
+      )
+    }
+
+    const body = await request.json()
+
+    const updateData: Record<string, unknown> = {}
+    if ('ai_agent_enabled' in body) {
+      updateData.ai_agent_enabled = Boolean(body.ai_agent_enabled)
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
+    }
+
+    const { error: updateError } = await supabase
+      .from('whatsapp_config')
+      .update(updateData)
+      .eq('account_id', accountId)
+
+    if (updateError) {
+      console.error('Error updating whatsapp_config:', updateError)
+      return NextResponse.json(
+        { error: 'Failed to update configuration' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error in WhatsApp config PATCH:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

@@ -169,9 +169,9 @@ export function FlowBuilder() {
 
         {state.nodes.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/50 p-8 text-center text-sm text-slate-400">
-            Add a <strong>Start</strong> node, then a <strong>Send buttons</strong>
-            {" "}node, then a <strong>Handoff</strong> — that&apos;s the welcome-menu
-            shape from the brief.
+            Adicione um node <strong>Início</strong>, depois um <strong>Enviar botões</strong>
+            {" "}node, depois <strong>Transferir para atendente</strong> — essa é a
+            estrutura do menu de boas-vindas do briefing.
           </div>
         ) : (
           state.nodes.map((node) => (
@@ -266,10 +266,10 @@ function TriggerPanel({
 }) {
   return (
     <section className="rounded-lg border border-slate-800 bg-slate-900 p-4">
-      <h2 className="mb-3 text-sm font-semibold text-white">Trigger</h2>
+      <h2 className="mb-3 text-sm font-semibold text-white">Gatilho</h2>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs text-slate-400">When…</label>
+          <label className="mb-1 block text-xs text-slate-400">Quando…</label>
           <Select
             value={state.trigger_type}
             onValueChange={(v) =>
@@ -286,13 +286,13 @@ function TriggerPanel({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="keyword">
-                A message contains a keyword
+                Uma mensagem contém uma palavra-chave
               </SelectItem>
               <SelectItem value="first_inbound_message">
-                Customer&apos;s first ever inbound message
+                Primeira mensagem recebida do cliente
               </SelectItem>
               <SelectItem value="manual">
-                Manual only (no auto-trigger)
+                Somente manual (sem gatilho automático)
               </SelectItem>
             </SelectContent>
           </Select>
@@ -300,7 +300,7 @@ function TriggerPanel({
         {state.trigger_type === "keyword" && (
           <div>
             <label className="mb-1 block text-xs text-slate-400">
-              Keywords (comma-separated)
+              Palavras-chave (separadas por vírgula)
             </label>
             <KeywordsInput
               keywords={
@@ -344,14 +344,14 @@ function EntryPicker({
   return (
     <section className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900 p-3">
       <CornerDownRight className="h-4 w-4 shrink-0 text-primary" />
-      <span className="text-xs text-slate-400">Entry node:</span>
+      <span className="text-xs text-slate-400">Node de entrada:</span>
       <NodeKeySelect
         value={state.entry_node_id}
         nodes={state.nodes}
         onChange={(key) =>
           setState((s) => ({ ...s, entry_node_id: key }))
         }
-        placeholder="Pick the first node…"
+        placeholder="Selecione o primeiro node…"
         className="flex-1 max-w-xs"
       />
     </section>
@@ -425,7 +425,7 @@ function NodeCard({
                 variant="outline"
                 className="border-primary/40 bg-primary/10 text-[10px] text-primary"
               >
-                Entry
+                Entrada
               </Badge>
             )}
           </div>
@@ -456,7 +456,7 @@ function NodeCard({
             <div className="flex items-center gap-2">
               {!isEntry && (
                 <Button variant="ghost" size="sm" onClick={onSetEntry}>
-                  Set as entry
+                  Definir como entrada
                 </Button>
               )}
             </div>
@@ -467,7 +467,7 @@ function NodeCard({
               className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Remove node
+              Remover node
             </Button>
           </div>
           {issues.length > 0 && (
@@ -522,13 +522,13 @@ function NodeConfigWithAdvanced({
           ) : (
             <ChevronDown className="h-3 w-3" />
           )}
-          {showAdvanced ? "Hide" : "Show"} advanced
+          {showAdvanced ? "Ocultar" : "Mostrar"} avançado
         </button>
         {showAdvanced && (
           <div className="mt-3 flex flex-col gap-3">
             <div>
               <label className="mb-1 block text-xs text-slate-400">
-                Node key (internal identifier — keep stable for analytics)
+                Chave do node (identificador interno — mantenha estável para análises)
               </label>
               <Input
                 value={node.node_key}
@@ -540,9 +540,9 @@ function NodeConfigWithAdvanced({
             </div>
             {hasReplyIds && (
               <p className="text-[10px] text-slate-500">
-                Reply IDs for each option are shown inline above. They&apos;re
-                returned by WhatsApp when a customer taps; you usually don&apos;t
-                need to touch them.
+                Reply IDs para cada opção são exibidos acima. Eles são
+                retornados pelo WhatsApp quando um cliente toca nelas; você
+                geralmente não precisa alterá-los.
               </p>
             )}
           </div>
@@ -574,10 +574,10 @@ function AddNodeButton({ onAdd }: { onAdd: (type: NodeType) => void }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors hover:bg-slate-800"
-        aria-label="Add node"
+        aria-label="Adicionar node"
       >
         <Plus className="h-3.5 w-3.5" />
-        Add node
+        Adicionar node
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="border-slate-700 bg-slate-900">
         {types.map((t) => {

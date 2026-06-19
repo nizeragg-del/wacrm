@@ -3,19 +3,14 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { CustomFieldsPanel } from '@/components/contacts/custom-fields-manager';
 
-/**
- * Settings → Custom Fields. Manage the account-wide custom contact field
- * catalogue (the same panel the Contacts page exposes via a dialog). Writes
- * are admin-gated by the caller and enforced by `custom_fields` RLS.
- */
 export function CustomFieldsSettings() {
   return (
     <div className="mt-4 space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-white">Custom fields</h2>
+        <h2 className="text-lg font-semibold text-white">Campos personalizados</h2>
         <p className="text-sm text-slate-400">
-          Define extra contact fields (e.g. ZIP code, lead source). They appear
-          on every contact and in the “Update Contact Field” automation action.
+          Defina campos de contato extras (ex. CEP, origem do lead). Eles aparecem
+          em cada contato e na ação de automação "Atualizar Campo de Contato".
         </p>
       </div>
 

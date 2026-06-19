@@ -48,6 +48,8 @@ export interface SendButtonsNodeConfig {
     /** node_key the runner advances to when this button is tapped. */
     next_node_key: string;
   }>;
+  /** When set, stores the selected reply_id into this flow var */
+  capture_reply_var?: string;
 }
 
 export interface SendListNodeConfig {
@@ -66,6 +68,8 @@ export interface SendListNodeConfig {
       next_node_key: string;
     }>;
   }>;
+  /** When set, stores the selected reply_id into this flow var */
+  capture_reply_var?: string;
 }
 
 /**
@@ -177,12 +181,86 @@ export interface SetTagNodeConfig {
 export type EndNodeConfig = Record<string, never>;
 
 /**
+ * Generates a landing page via the website-generator module.
+ * Reads specifications from flow vars, calls Gemini, captures
+ * screenshots, sends each screenshot as a media message, and
+ * stores the website_order_id in vars. Auto-advances.
+ */
+export interface GenerateWebsiteNodeConfig {
+  /** Maps flow var keys to website specification fields */
+  specs: {
+    empresa_nome_var: string;
+    nicho_var: string;
+    descricao_var: string;
+    cores_var?: string;
+    observacoes_var?: string;
+  };
+  /** Hardcoded template type (used when template_type_var is not set) */
+  template_type?: "sales_page" | "institutional" | "portfolio" | "capture" | "event";
+  /** Flow var key that contains the template type (overrides template_type when set) */
+  template_type_var?: string;
+  next_node_key: string;
+}
+
+/**
+ * Creates an Asaas PIX payment for an approved website order.
+ * Reads order_id from vars, creates the charge, sends PIX QR
+ * code as image + PIX copia e cola as text to the customer.
+ * Auto-advances.
+ */
+export interface CreatePaymentNodeConfig {
+  /** Var key that holds the website_order_id */
+  order_id_var: string;
+  /** Fixed payment value in BRL */
+  payment_value: number;
+  next_node_key: string;
+}
+
+/**
+ * Loads the most recent website_orders record for the current contact
+ * into a flow var. Enables the management menu to show deploy URL,
+ * domain, status, etc. Auto-advances.
+ */
+export interface WebsiteOrderCheckConfig {
+  /** Flow var key where the website_order object will be stored. */
+  order_var: string;
+  /** Auto-advance target. */
+  next_node_key: string;
+}
+
+/**
+ * Schedules a reminder for abandonment recovery. Inserts a row into
+ * `scheduled_reminders` table. Auto-advances.
+ */
+export interface ScheduleReminderConfig {
+  /** Var key that holds the website_order_id */
+  order_id_var: string;
+  /** Delay in minutes from now */
+  delay_minutes: number;
+  /** Message template (supports {{vars.X}} interpolation) */
+  message_template: string;
+  /** Auto-advance target. */
+  next_node_key: string;
+}
+
+/**
+ * Auto-confirms a payment by calling the simulate-payment endpoint.
+ * Used for testing — in production, the Asaas webhook handles this.
+ * Auto-advances after the deploy completes.
+ */
+export interface AutoConfirmPaymentConfig {
+  /** Var key that holds the website_order_id */
+  order_id_var: string;
+  /** Delay in seconds before triggering confirmation (default: 5) */
+  delay_seconds?: number;
+  /** Auto-advance target. */
+  next_node_key: string;
+}
+
+/**
  * Total union — every concrete node_type the v1 engine understands.
  * Add new node types here and the engine's switch will flag missing
  * cases via TypeScript's exhaustiveness check.
- *
- * v1.5+ additions (collect_input, condition, set_tag, http_fetch) will
- * extend this union — out-of-scope for the v1 engine PR.
  */
 export type FlowNodeConfig =
   | { node_type: "start"; config: StartNodeConfig }
@@ -194,7 +272,12 @@ export type FlowNodeConfig =
   | { node_type: "condition"; config: ConditionNodeConfig }
   | { node_type: "set_tag"; config: SetTagNodeConfig }
   | { node_type: "handoff"; config: HandoffNodeConfig }
-  | { node_type: "end"; config: EndNodeConfig };
+  | { node_type: "end"; config: EndNodeConfig }
+  | { node_type: "generate_website"; config: GenerateWebsiteNodeConfig }
+  | { node_type: "create_payment"; config: CreatePaymentNodeConfig }
+  | { node_type: "website_order_check"; config: WebsiteOrderCheckConfig }
+  | { node_type: "schedule_reminder"; config: ScheduleReminderConfig }
+  | { node_type: "auto_confirm_payment"; config: AutoConfirmPaymentConfig };
 
 export type FlowNodeType = FlowNodeConfig["node_type"];
 
@@ -356,6 +439,7 @@ export interface DispatchInboundResult {
     | "started"
     | "completed"
     | "handed_off"
+    | "busy"
     | "fallback_fired"
     | "duplicate_inbound_ignored"
     | "no_match";

@@ -187,12 +187,12 @@ export function TemplatePicker({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white">
             <LayoutTemplate className="h-4 w-4 text-primary" />
-            {selected ? selected.name : "Send template"}
+            {selected ? selected.name : "Enviar modelo"}
           </DialogTitle>
           <DialogDescription className="text-slate-400">
             {selected
-              ? "Fill in the placeholders to render this template. Meta requires every variable to be set."
-              : "Pick an approved WhatsApp template to send to this contact."}
+              ? "Preencha os campos para renderizar este modelo. A Meta exige que todas as variáveis sejam definidas."
+              : "Selecione um modelo aprovado do WhatsApp para enviar a este contato."}
           </DialogDescription>
         </DialogHeader>
 
@@ -204,10 +204,10 @@ export function TemplatePicker({
               </div>
             ) : templates.length === 0 ? (
               <div className="rounded-md border border-slate-800 bg-slate-950/50 p-6 text-center">
-                <p className="text-sm text-slate-300">No approved templates</p>
+                <p className="text-sm text-slate-300">Nenhum modelo aprovado</p>
                 <p className="mt-1 text-xs text-slate-500">
-                  Approve a template in Meta WhatsApp Manager, then sync it
-                  from Settings → Templates.
+                  Aprove um modelo no Meta WhatsApp Manager, depois sincronize em
+                  Configurações → Modelos.
                 </p>
               </div>
             ) : (
@@ -246,7 +246,7 @@ export function TemplatePicker({
         ) : (
           <div className="space-y-3">
             <div className="rounded-md border border-slate-800 bg-slate-950/50 p-3">
-              <p className="mb-1 text-xs text-slate-400">Preview</p>
+              <p className="mb-1 text-xs text-slate-400">Pré-visualização</p>
               <p className="whitespace-pre-wrap text-sm text-slate-200">
                 {renderBodyPreview(selected.body_text, params)}
               </p>
@@ -264,7 +264,7 @@ export function TemplatePicker({
                 <Input
                   value={headerText}
                   onChange={(e) => setHeaderText(e.target.value)}
-                  placeholder="Value for the header variable"
+                  placeholder="Valor para a variável do cabeçalho"
                   className="border-slate-700 bg-slate-800 text-white placeholder:text-slate-500"
                 />
               </div>
@@ -279,7 +279,7 @@ export function TemplatePicker({
                     next[i] = e.target.value;
                     setParams(next);
                   }}
-                  placeholder={`Value for {{${v}}}`}
+                  placeholder={`Valor para {{${v}}}`}
                   className="border-slate-700 bg-slate-800 text-white placeholder:text-slate-500"
                 />
               </div>
@@ -287,7 +287,7 @@ export function TemplatePicker({
             {slots?.urlButtonSlots.map((slot) => (
               <div key={slot.index} className="space-y-1">
                 <Label className="text-xs text-slate-300">
-                  {`URL button "${slot.text}" — value for `}{`{{1}}`}
+                  {`Botão URL "${slot.text}" — valor para `}{`{{1}}`}
                 </Label>
                 <Input
                   value={buttonParams[slot.index] ?? ""}
@@ -297,11 +297,11 @@ export function TemplatePicker({
                       [slot.index]: e.target.value,
                     }))
                   }
-                  placeholder="URL suffix value"
+                  placeholder="Valor do sufixo URL"
                   className="border-slate-700 bg-slate-800 text-white placeholder:text-slate-500"
                 />
                 <p className="text-[10px] text-slate-500 break-all">
-                  Final URL: {slot.url.replace(/\{\{1\}\}/g, buttonParams[slot.index] || "{{1}}")}
+                  URL final: {slot.url.replace(/\{\{1\}\}/g, buttonParams[slot.index] || "{{1}}")}
                 </p>
               </div>
             ))}
@@ -317,14 +317,14 @@ export function TemplatePicker({
                 className="border-slate-700 text-slate-300 hover:bg-slate-800"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Back
+                Voltar
               </Button>
               <Button
                 disabled={!canConfirm}
                 onClick={confirm}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                Send template
+                Enviar modelo
               </Button>
             </>
           ) : (
@@ -333,7 +333,7 @@ export function TemplatePicker({
               onClick={() => handleOpenChange(false)}
               className="border-slate-700 text-slate-300 hover:bg-slate-800"
             >
-              Cancel
+              Cancelar
             </Button>
           )}
         </DialogFooter>

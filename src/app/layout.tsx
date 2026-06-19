@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     default: "wacrm",
     template: "%s — wacrm",
   },
-  description: "Self-hostable CRM template for WhatsApp.",
+  description: "CRM auto-hospedável para WhatsApp.",
   robots: {
     index: false,
     follow: false,
@@ -67,7 +67,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="pt-BR"
       data-theme={DEFAULT_THEME}
       className={`${inter.variable} h-full antialiased`}
       // The `theme-boot` script below rewrites `data-theme` on <html>

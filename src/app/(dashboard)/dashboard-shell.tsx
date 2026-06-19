@@ -30,7 +30,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       <div className="flex h-screen items-center justify-center bg-slate-950">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-slate-400">Loading...</p>
+          <p className="text-sm text-slate-400">Carregando...</p>
         </div>
       </div>
     );
