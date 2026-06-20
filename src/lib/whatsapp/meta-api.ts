@@ -43,6 +43,7 @@ function getHeaders(accessToken?: string) {
   return {
     'Content-Type': 'application/json',
     'apikey': accessToken || getEvolutionApiKey(),
+    'ngrok-skip-browser-warning': 'true',
   }
 }
 
