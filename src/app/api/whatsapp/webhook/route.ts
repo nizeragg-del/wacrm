@@ -236,6 +236,16 @@ async function processEvolutionWebhook(body: any, config: any) {
     const message = mapEvolutionMessageToMeta(data)
     if (!message) return
 
+    // Idempotency check: skip if message already exists
+    const { data: existingMsg } = await supabaseAdmin()
+      .from('messages')
+      .select('id')
+      .eq('message_id', message.id)
+      .maybeSingle()
+    if (existingMsg) {
+      return
+    }
+
     const contact = {
       profile: { name: data.pushName || message.from },
       wa_id: message.from
