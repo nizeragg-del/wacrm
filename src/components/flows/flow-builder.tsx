@@ -168,7 +168,7 @@ export function FlowBuilder() {
         </div>
 
         {state.nodes.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/50 p-8 text-center text-sm text-slate-400">
+          <div className="rounded-lg border border-dashed border-slate-700 bg-white/5/50 p-8 text-center text-sm text-slate-400">
             Adicione um node <strong>Início</strong>, depois um <strong>Enviar botões</strong>
             {" "}node, depois <strong>Transferir para atendente</strong> — essa é a
             estrutura do menu de boas-vindas do briefing.
@@ -246,7 +246,7 @@ function KeywordsInput({
         }
       }}
       placeholder="support, help, hi"
-      className="bg-slate-800"
+      className="bg-white/5"
     />
   );
 }
@@ -265,7 +265,7 @@ function TriggerPanel({
   triggerIssues: ValidationIssue[];
 }) {
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+    <section className="rounded-lg border border-white/5 bg-white/5 p-4">
       <h2 className="mb-3 text-sm font-semibold text-white">Gatilho</h2>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
@@ -281,7 +281,7 @@ function TriggerPanel({
               }))
             }
           >
-            <SelectTrigger className="bg-slate-800">
+            <SelectTrigger className="bg-white/5">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -342,7 +342,7 @@ function EntryPicker({
 }) {
   if (state.nodes.length === 0) return null;
   return (
-    <section className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900 p-3">
+    <section className="flex items-center gap-3 rounded-lg border border-white/5 bg-white/5 p-3">
       <CornerDownRight className="h-4 w-4 shrink-0 text-primary" />
       <span className="text-xs text-slate-400">Node de entrada:</span>
       <NodeKeySelect
@@ -396,12 +396,12 @@ function NodeCard({
     <div
       ref={cardRef}
       className={cn(
-        "rounded-lg border bg-slate-900 transition-shadow duration-500",
+        "rounded-lg border bg-white/5 transition-shadow duration-500",
         hasError
           ? "border-red-500/40"
           : isEntry
             ? "border-primary/50"
-            : "border-slate-800",
+            : "border-white/5",
         isFlashed &&
           "ring-2 ring-primary ring-offset-2 ring-offset-slate-950",
       )}
@@ -417,7 +417,7 @@ function NodeCard({
             <span className="truncate text-sm font-medium text-white">
               {meta.label}
             </span>
-            <code className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">
+            <code className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-400">
               {node.node_key}
             </code>
             {isEntry && (
@@ -445,14 +445,14 @@ function NodeCard({
         )}
       </button>
       {expanded && (
-        <div className="border-t border-slate-800 px-4 py-4">
+        <div className="border-t border-white/5 px-4 py-4">
           <NodeConfigWithAdvanced
             node={node}
             allNodes={allNodes}
             onUpdate={onUpdate}
             onUpdateConfig={onUpdateConfig}
           />
-          <div className="mt-4 flex items-center justify-between border-t border-slate-800 pt-3">
+          <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-3">
             <div className="flex items-center gap-2">
               {!isEntry && (
                 <Button variant="ghost" size="sm" onClick={onSetEntry}>
@@ -511,7 +511,7 @@ function NodeConfigWithAdvanced({
         showAdvanced={showAdvanced}
         onUpdateConfig={onUpdateConfig}
       />
-      <div className="border-t border-slate-800 pt-3">
+      <div className="border-t border-white/5 pt-3">
         <button
           type="button"
           onClick={() => setShowAdvanced((v) => !v)}
@@ -535,7 +535,7 @@ function NodeConfigWithAdvanced({
                 onChange={(e) =>
                   onUpdate({ node_key: slugify(e.target.value, node.node_key) })
                 }
-                className="bg-slate-800 font-mono text-xs"
+                className="bg-white/5 font-mono text-xs"
               />
             </div>
             {hasReplyIds && (
@@ -573,13 +573,13 @@ function AddNodeButton({ onAdd }: { onAdd: (type: NodeType) => void }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors hover:bg-slate-800"
+        className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors hover:bg-white/5"
         aria-label="Adicionar node"
       >
         <Plus className="h-3.5 w-3.5" />
         Adicionar node
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="border-slate-700 bg-slate-900">
+      <DropdownMenuContent align="end" className="border-slate-700 bg-white/5">
         {types.map((t) => {
           const meta = NODE_META[t];
           return (

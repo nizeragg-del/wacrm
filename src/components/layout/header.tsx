@@ -52,25 +52,25 @@ export function Header({ onOpenSidebar }: HeaderProps) {
     "U";
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-800 bg-slate-950 px-4 lg:px-6">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-white/5 bg-[#060a14]/80 backdrop-blur-xl px-4 lg:px-6">
       <div className="flex min-w-0 items-center gap-2">
         {/* Hamburger — mobile only. 44×44 hit target per Apple HIG. */}
         <button
           type="button"
           onClick={onOpenSidebar}
           aria-label="Open menu"
-          className="flex h-10 w-10 items-center justify-center rounded-md text-slate-300 transition-colors hover:bg-slate-800 hover:text-white lg:hidden"
+          className="flex h-10 w-10 items-center justify-center rounded-md text-slate-300 transition-colors hover:bg-white/5 hover:text-white lg:hidden"
         >
           <Menu className="h-5 w-5" />
         </button>
-        <h1 className="truncate text-base font-semibold text-white sm:text-lg">
+        <h1 className="truncate text-base font-bold tracking-tight text-white sm:text-lg">
           {title}
         </h1>
       </div>
 
       <DropdownMenu>
         <DropdownMenuTrigger
-          className="flex items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-slate-800/70 focus:bg-slate-800/70 focus:outline-none data-popup-open:bg-slate-800/70 sm:gap-3 sm:pl-1 sm:pr-3"
+          className="flex items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-white/5 focus:bg-white/5 focus:outline-none data-popup-open:bg-white/5 sm:gap-3 sm:pl-1 sm:pr-3"
           aria-label="Open account menu"
         >
           <Avatar className="size-8">

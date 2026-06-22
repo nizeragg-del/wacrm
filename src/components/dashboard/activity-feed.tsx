@@ -55,8 +55,8 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
 
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900">
-      <header className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
-        <h2 className="text-sm font-semibold text-white">Atividade Recente</h2>
+      <header className="flex items-center justify-between border-b border-white/5 px-5 py-4">
+        <h2 className="text-sm font-bold tracking-tight text-white">Atividade Recente</h2>
         <Link
           href="/inbox"
           className="text-xs font-medium text-primary hover:text-primary/80"

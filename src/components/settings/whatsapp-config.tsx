@@ -388,7 +388,7 @@ export function WhatsAppConfig() {
           </Alert>
         )}
 
-        <Alert className="bg-slate-900 border-slate-700">
+        <Alert className="bg-white/5 border-slate-700">
           <div className="flex items-center gap-2">
             {connectionStatus === 'connected' ? (
               <CheckCircle2 className="size-4 text-primary" />
@@ -437,7 +437,7 @@ export function WhatsAppConfig() {
                 size="sm"
                 onClick={handleVerifyRegistration}
                 disabled={verifyingRegistration}
-                className="border-slate-700 bg-transparent text-slate-200 hover:bg-slate-800 h-7"
+                className="border-slate-700 bg-transparent text-slate-200 hover:bg-white/5 h-7"
               >
                 {verifyingRegistration ? (
                   <Loader2 className="size-3.5 animate-spin" />
@@ -477,7 +477,7 @@ export function WhatsAppConfig() {
             </AlertDescription>
 
             {registrationProbe && (
-              <div className="mt-3 rounded border border-slate-700 bg-slate-900/60 px-3 py-2 space-y-1.5 text-[11px]">
+              <div className="mt-3 rounded border border-slate-700 bg-white/5/60 px-3 py-2 space-y-1.5 text-[11px]">
                 <p className="font-medium text-slate-200">
                   Diagnóstico — última execução: {' '}
                   <span className={registrationProbe.live ? 'text-emerald-400' : 'text-amber-400'}>
@@ -510,7 +510,7 @@ export function WhatsAppConfig() {
           </Alert>
         )}
 
-        <Card className="bg-slate-900 border-slate-700 ring-0 ring-transparent">
+        <Card className="bg-white/5 border-slate-700 ring-0 ring-transparent">
           <CardHeader>
             <CardTitle className="text-white">Credenciais da API</CardTitle>
             <CardDescription className="text-slate-400">
@@ -524,7 +524,7 @@ export function WhatsAppConfig() {
                 placeholder="ex. 100234567890123"
                 value={phoneNumberId}
                 onChange={(e) => setPhoneNumberId(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                className="bg-white/5 border-slate-700 text-white placeholder:text-slate-500"
               />
             </div>
 
@@ -534,7 +534,7 @@ export function WhatsAppConfig() {
                 placeholder="ex. 100234567890456"
                 value={wabaId}
                 onChange={(e) => setWabaId(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                className="bg-white/5 border-slate-700 text-white placeholder:text-slate-500"
               />
             </div>
 
@@ -555,7 +555,7 @@ export function WhatsAppConfig() {
                       setTokenEdited(true);
                     }
                   }}
-                  className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 pr-10"
+                  className="bg-white/5 border-slate-700 text-white placeholder:text-slate-500 pr-10"
                 />
                 <button
                   type="button"
@@ -578,7 +578,7 @@ export function WhatsAppConfig() {
                 placeholder="Crie um token de verificação personalizado"
                 value={verifyToken}
                 onChange={(e) => setVerifyToken(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                className="bg-white/5 border-slate-700 text-white placeholder:text-slate-500"
               />
               <p className="text-xs text-slate-500">
                 Uma string personalizada que você cria. Deve corresponder ao token definido nas configurações de webhook da Meta.
@@ -599,7 +599,7 @@ export function WhatsAppConfig() {
                 onChange={(e) =>
                   setPin(e.target.value.replace(/\D/g, '').slice(0, 6))
                 }
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 tracking-widest"
+                className="bg-white/5 border-slate-700 text-white placeholder:text-slate-500 tracking-widest"
               />
               <p className="text-xs text-slate-500 leading-relaxed">
                 Necessário apenas para conectar mensagens <strong className="text-slate-300">de entrada</strong>
@@ -621,7 +621,7 @@ export function WhatsAppConfig() {
           </CardContent>
         </Card>
 
-        <Card className="bg-slate-900 border-slate-700 ring-0 ring-transparent">
+        <Card className="bg-white/5 border-slate-700 ring-0 ring-transparent">
           <CardHeader>
             <CardTitle className="text-white">Configuração do Webhook</CardTitle>
             <CardDescription className="text-slate-400">
@@ -635,13 +635,13 @@ export function WhatsAppConfig() {
                 <Input
                   readOnly
                   value={webhookUrl}
-                  className="bg-slate-800 border-slate-700 text-slate-300 font-mono text-sm"
+                  className="bg-white/5 border-slate-700 text-slate-300 font-mono text-sm"
                 />
                 <Button
                   variant="outline"
                   size="icon"
                   onClick={handleCopyWebhookUrl}
-                  className="shrink-0 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
+                  className="shrink-0 border-slate-700 text-slate-300 hover:text-white hover:bg-white/5"
                 >
                   <Copy className="size-4" />
                 </Button>
@@ -650,7 +650,7 @@ export function WhatsAppConfig() {
           </CardContent>
         </Card>
 
-        <Card className="bg-slate-900 border-slate-700 ring-0 ring-transparent">
+        <Card className="bg-white/5 border-slate-700 ring-0 ring-transparent">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Bot className="size-5" />
@@ -698,7 +698,7 @@ export function WhatsAppConfig() {
             variant="outline"
             onClick={handleTestConnection}
             disabled={testing || !config}
-            className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
+            className="border-slate-700 text-slate-300 hover:text-white hover:bg-white/5"
           >
             {testing ? (
               <>
@@ -736,7 +736,7 @@ export function WhatsAppConfig() {
       </div>
 
       <div>
-        <Card className="bg-slate-900 border-slate-700 ring-0 ring-transparent">
+        <Card className="bg-white/5 border-slate-700 ring-0 ring-transparent">
           <CardHeader>
             <CardTitle className="text-white text-base">Instruções de Configuração</CardTitle>
             <CardDescription className="text-slate-400">

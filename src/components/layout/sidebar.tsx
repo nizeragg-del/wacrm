@@ -43,7 +43,7 @@ const ROLE_CHIP: Record<
     icon: Shield,
     label: "Admin",
     className:
-      "border-primary/40 bg-primary/10 text-primary",
+      "border-primary/40 bg-primary/10 text-primary relative",
   },
   agent: {
     icon: UserCog,
@@ -163,7 +163,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       <aside
         className={cn(
           // Mobile: fixed drawer that slides in from the left.
-          "fixed inset-y-0 left-0 z-40 flex h-full w-64 flex-col border-r border-slate-800 bg-slate-900",
+          "fixed inset-y-0 left-0 z-40 flex h-full w-64 flex-col border-r border-white/5 bg-slate-900",
           "transition-transform duration-200 ease-out will-change-transform",
           open ? "translate-x-0" : "-translate-x-full",
           // Desktop: static, always visible — reset all the mobile framing.
@@ -186,7 +186,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             type="button"
             onClick={onClose}
             aria-label="Close menu"
-            className="flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-white lg:hidden"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-white/5 hover:text-white lg:hidden"
           >
             <X className="h-5 w-5" />
           </button>
@@ -211,8 +211,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                       // Taller on mobile so fingers can hit the row reliably (≥44px).
                       "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
                       isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-slate-400 hover:bg-slate-800 hover:text-white",
+                        ? "bg-primary/10 text-primary relative"
+                        : "text-slate-400 hover:bg-white/5 hover:text-white",
                     )}
                   >
                     <item.icon className="h-4 w-4" />
@@ -240,7 +240,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             })}
           </ul>
 
-          <div className="my-4 border-t border-slate-800" />
+          <div className="my-4 border-t border-white/5" />
 
           <ul className="flex flex-col gap-1">
             {bottomNavItems.map((item) => {
@@ -252,8 +252,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     className={cn(
                       "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
                       isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-slate-400 hover:bg-slate-800 hover:text-white",
+                        ? "bg-primary/10 text-primary relative"
+                        : "text-slate-400 hover:bg-white/5 hover:text-white",
                     )}
                   >
                     <item.icon className="h-4 w-4" />
@@ -266,7 +266,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         </nav>
 
         {/* User section */}
-        <div className="shrink-0 border-t border-slate-800 p-3">
+        <div className="shrink-0 border-t border-white/5 p-3">
           {/* Account name display — surfaced only when the account
               name differs from the user's own name (see
               `showAccountStrip`). For a default solo account the two

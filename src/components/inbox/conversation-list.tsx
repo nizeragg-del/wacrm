@@ -147,27 +147,27 @@ export function ConversationList({
     // w-full on mobile so the list occupies the whole viewport when it's
     // the single pane showing; fixed 320px on desktop where it shares the
     // row with the thread + contact sidebar.
-    <div className="flex h-full w-full flex-col border-r border-slate-800 bg-slate-900 lg:w-80">
+    <div className="flex h-full w-full flex-col border-r border-white/5 bg-white/5 lg:w-80">
       {/* Search + Filter */}
-      <div className="space-y-2 border-b border-slate-800 p-3">
+      <div className="space-y-2 border-b border-white/5 p-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <Input
             value={search}
             onChange={handleSearchChange}
             placeholder="Buscar conversas..."
-            className="border-slate-700 bg-slate-800 pl-9 text-sm text-white placeholder-slate-500 focus:border-primary/50"
+            className="border-slate-700 bg-white/5 pl-9 text-sm text-white placeholder-slate-500 focus:border-primary/50"
           />
         </div>
 
         <DropdownMenu>
-          <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-slate-400 hover:text-white rounded-md hover:bg-slate-800">
+          <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-slate-400 hover:text-white rounded-md hover:bg-white/5">
               {activeFilter?.label ?? "Todas"}
               <ChevronDown className="h-3 w-3" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="start"
-            className="border-slate-700 bg-slate-800"
+            className="border-slate-700 bg-white/5"
           >
             {FILTER_OPTIONS.map((opt) => (
               <DropdownMenuItem
@@ -248,8 +248,8 @@ function ConversationItem({
     <button
       onClick={handleClick}
       className={cn(
-        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-slate-800/50",
-        isActive && "border-l-2 border-primary bg-slate-800/70"
+        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-white/5/50",
+        isActive && "border-l-2 border-primary bg-white/5/70"
       )}
     >
       {/* Avatar */}

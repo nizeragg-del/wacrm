@@ -117,7 +117,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
   if (!contact) {
     return (
-      <div className="flex h-full w-70 items-center justify-center border-l border-slate-800 bg-slate-900">
+      <div className="flex h-full w-70 items-center justify-center border-l border-white/5 bg-white/5">
         <p className="text-sm text-slate-500">Selecione uma conversa</p>
       </div>
     );
@@ -127,7 +127,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const initials = displayName.charAt(0).toUpperCase();
 
   return (
-    <div className="flex h-full w-70 flex-col border-l border-slate-800 bg-slate-900">
+    <div className="flex h-full w-70 flex-col border-l border-white/5 bg-white/5">
       <ScrollArea className="flex-1">
         <div className="p-4">
           {/* Contact Info */}
@@ -155,7 +155,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           <div className="mt-4 space-y-2">
             <button
               onClick={handleCopyPhone}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-slate-800"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/5"
             >
               <Phone className="h-4 w-4 text-slate-500" />
               <span className="flex-1 text-left">{contact.phone}</span>
@@ -175,7 +175,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           </div>
 
           {/* Divider */}
-          <div className="my-4 border-t border-slate-800" />
+          <div className="my-4 border-t border-white/5" />
 
           {/* Tags */}
           <div>
@@ -204,7 +204,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           </div>
 
           {/* Divider */}
-          <div className="my-4 border-t border-slate-800" />
+          <div className="my-4 border-t border-white/5" />
 
           {/* Active Deals */}
           <div>
@@ -219,7 +219,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                 deals.map((deal) => (
                   <div
                     key={deal.id}
-                    className="rounded-lg bg-slate-800 px-3 py-2"
+                    className="rounded-lg bg-white/5 px-3 py-2"
                   >
                     <p className="text-sm font-medium text-white">
                       {deal.title}
@@ -248,7 +248,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           </div>
 
           {/* Divider */}
-          <div className="my-4 border-t border-slate-800" />
+          <div className="my-4 border-t border-white/5" />
 
           {/* Notes */}
           <div>
@@ -263,7 +263,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                   onChange={(e) => setNewNote(e.target.value)}
                   placeholder="Adicionar uma nota..."
                   rows={2}
-                  className="flex-1 resize-none rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-primary/50"
+                  className="flex-1 resize-none rounded-lg border border-slate-700 bg-white/5 px-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-primary/50"
                 />
                 <Button
                   size="sm"
@@ -279,7 +279,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                 {notes.map((note) => (
                   <div
                     key={note.id}
-                    className="rounded-lg bg-slate-800 px-3 py-2"
+                    className="rounded-lg bg-white/5 px-3 py-2"
                   >
                     <p className="whitespace-pre-wrap text-xs text-slate-300">
                       {note.note_text}

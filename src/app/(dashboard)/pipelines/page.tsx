@@ -319,7 +319,7 @@ export default function PipelinesPage() {
           {/* Pipeline selector dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800 transition-colors data-[popup-open]:bg-slate-800"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-white/5 px-3 py-2 text-sm text-white hover:bg-white/5 transition-colors data-[popup-open]:bg-slate-800"
             >
               <GitBranch className="h-4 w-4 text-primary" />
               <span className="font-semibold">
@@ -329,7 +329,7 @@ export default function PipelinesPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="start"
-              className="w-64 border-slate-700 bg-slate-900 text-slate-200"
+              className="w-64 border-slate-700 bg-white/5 text-slate-200"
             >
               {pipelines.length === 0 && (
                 <DropdownMenuItem disabled className="text-slate-500">
@@ -370,7 +370,7 @@ export default function PipelinesPage() {
             canAct={canEditSettings}
             gateReason="create pipelines"
             onClick={() => setNewPipelineOpen(true)}
-            className="border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+            className="border-slate-700 bg-white/5 text-slate-200 hover:bg-white/5"
           >
             <Plus className="mr-1 h-4 w-4" />
             Adicionar Funil
@@ -423,7 +423,7 @@ export default function PipelinesPage() {
 
       {/* New Pipeline Dialog */}
       <Dialog open={newPipelineOpen} onOpenChange={setNewPipelineOpen}>
-        <DialogContent className="sm:max-w-sm bg-slate-900 border-slate-700">
+        <DialogContent className="sm:max-w-sm bg-white/5 border-slate-700">
           <DialogHeader>
             <DialogTitle className="text-white">Novo Funil</DialogTitle>
           </DialogHeader>
@@ -442,11 +442,11 @@ export default function PipelinesPage() {
               Estágios padrão (Novo Lead → Ganho) serão criados automaticamente.
             </p>
           </div>
-          <DialogFooter className="bg-slate-900/50 border-slate-700">
+          <DialogFooter className="bg-white/5/50 border-slate-700">
             <Button
               variant="outline"
               onClick={() => setNewPipelineOpen(false)}
-              className="border-slate-700 text-slate-300 hover:bg-slate-800"
+              className="border-slate-700 text-slate-300 hover:bg-white/5"
             >
               Cancelar
             </Button>

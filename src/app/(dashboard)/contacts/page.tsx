@@ -227,7 +227,7 @@ export default function ContactsPage() {
             <Button
               variant="outline"
               onClick={() => setCustomFieldsOpen(true)}
-              className="border-slate-700 text-slate-300 hover:bg-slate-800"
+              className="border-slate-700 text-slate-300 hover:bg-white/5"
             >
               <SlidersHorizontal className="size-4" />
               Campos personalizados
@@ -238,7 +238,7 @@ export default function ContactsPage() {
             canAct={canEdit}
             gateReason="adicionar ou importar contatos"
             onClick={() => setImportOpen(true)}
-            className="border-slate-700 text-slate-300 hover:bg-slate-800"
+            className="border-slate-700 text-slate-300 hover:bg-white/5"
           >
             <Upload className="size-4" />
             Importar
@@ -267,15 +267,15 @@ export default function ContactsPage() {
             setPage(0);
           }}
           placeholder="Buscar por nome, telefone ou e-mail..."
-          className="pl-8 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500"
+          className="pl-8 bg-white/5 border-slate-700 text-white placeholder:text-slate-500"
         />
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-slate-800 overflow-hidden">
+      <div className="rounded-lg border border-white/5 overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="border-slate-800 hover:bg-transparent">
+            <TableRow className="border-white/5 hover:bg-transparent">
               <TableHead className="text-slate-400">Nome</TableHead>
               <TableHead className="text-slate-400">Telefone</TableHead>
               <TableHead className="text-slate-400 hidden md:table-cell">E-mail</TableHead>
@@ -287,7 +287,7 @@ export default function ContactsPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow className="border-slate-800">
+              <TableRow className="border-white/5">
                 <TableCell colSpan={7} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Loader2 className="size-6 animate-spin text-primary" />
@@ -296,7 +296,7 @@ export default function ContactsPage() {
                 </TableCell>
               </TableRow>
             ) : contacts.length === 0 ? (
-              <TableRow className="border-slate-800">
+              <TableRow className="border-white/5">
                 <TableCell colSpan={7} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Users className="size-8 text-slate-600" />
@@ -308,7 +308,7 @@ export default function ContactsPage() {
                         variant="outline"
                         size="sm"
                         onClick={openAddForm}
-                        className="mt-2 border-slate-700 text-slate-300 hover:bg-slate-800"
+                        className="mt-2 border-slate-700 text-slate-300 hover:bg-white/5"
                       >
                         <Plus className="size-3.5" />
                         Adicione seu primeiro contato
@@ -321,7 +321,7 @@ export default function ContactsPage() {
               contacts.map((contact) => (
                 <TableRow
                   key={contact.id}
-                  className="border-slate-800 hover:bg-slate-900/50 cursor-pointer"
+                  className="border-white/5 hover:bg-white/5/50 cursor-pointer"
                   onClick={() => openDetail(contact.id)}
                 >
                   <TableCell className="text-white font-medium">
@@ -384,7 +384,7 @@ export default function ContactsPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         align="end"
-                        className="bg-slate-900 border-slate-700"
+                        className="bg-white/5 border-slate-700"
                       >
                         <DropdownMenuItem
                           onClick={(e) => {
@@ -430,7 +430,7 @@ export default function ContactsPage() {
               size="icon-sm"
               disabled={!hasPrev}
               onClick={() => setPage((p) => p - 1)}
-              className="border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white disabled:opacity-30"
+              className="border-slate-700 text-slate-400 hover:bg-white/5 hover:text-white disabled:opacity-30"
             >
               <ChevronLeft className="size-4" />
             </Button>
@@ -442,7 +442,7 @@ export default function ContactsPage() {
               size="icon-sm"
               disabled={!hasNext}
               onClick={() => setPage((p) => p + 1)}
-              className="border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white disabled:opacity-30"
+              className="border-slate-700 text-slate-400 hover:bg-white/5 hover:text-white disabled:opacity-30"
             >
               <ChevronRight className="size-4" />
             </Button>
@@ -491,7 +491,7 @@ export default function ContactsPage() {
 
       {/* Delete Confirmation */}
       <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent className="bg-slate-900 border-slate-700 text-slate-200 sm:max-w-sm">
+        <DialogContent className="bg-white/5 border-slate-700 text-slate-200 sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-white">Excluir Contato</DialogTitle>
             <DialogDescription className="text-slate-400">
@@ -502,11 +502,11 @@ export default function ContactsPage() {
               ? Esta ação não pode ser desfeita.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="bg-slate-900 border-slate-700">
+          <DialogFooter className="bg-white/5 border-slate-700">
             <Button
               variant="outline"
               onClick={() => setDeleteConfirmOpen(false)}
-              className="border-slate-700 text-slate-300 hover:bg-slate-800"
+              className="border-slate-700 text-slate-300 hover:bg-white/5"
             >
               Cancelar
             </Button>

@@ -9,7 +9,7 @@ services:
       - "8080:8080"
     environment:
       - NODE_ENV=production
-      - SERVER_URL=http://localhost:8080
+      - SERVER_URL=https://staring-splashing-relapsing.ngrok-free.dev
       - LOG_LEVEL=DEBUG
       - LOG_COLOR=true
       - LOG_BAILEYS=debug

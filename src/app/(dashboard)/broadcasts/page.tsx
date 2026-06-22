@@ -195,10 +195,10 @@ export default function BroadcastsPage() {
           </GatedButton>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900">
+        <div className="overflow-x-auto rounded-xl border border-white/5 bg-white/5">
           <Table>
             <TableHeader>
-              <TableRow className="border-slate-800 hover:bg-transparent">
+              <TableRow className="border-white/5 hover:bg-transparent">
                 <TableHead className="text-slate-400">Nome</TableHead>
                 <TableHead className="hidden text-slate-400 md:table-cell">Template</TableHead>
                 <TableHead className="hidden text-right text-slate-400 sm:table-cell">
@@ -216,7 +216,7 @@ export default function BroadcastsPage() {
                 return (
                   <TableRow
                     key={broadcast.id}
-                    className="cursor-pointer border-slate-800 hover:bg-slate-800/50"
+                    className="cursor-pointer border-white/5 hover:bg-white/5/50"
                     onClick={() => router.push(`/broadcasts/${broadcast.id}`)}
                   >
                     <TableCell className="font-medium text-white">

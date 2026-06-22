@@ -77,7 +77,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs value={tab} onValueChange={(v) => onChange(v as TabValue)}>
-        <TabsList className="border border-slate-700 bg-slate-900">
+        <TabsList className="border border-slate-700 bg-white/5">
           <TabsTrigger
             value="profile"
             className="data-active:text-primary text-slate-400 data-active:bg-slate-800"

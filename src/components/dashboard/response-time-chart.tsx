@@ -44,10 +44,10 @@ export function ResponseTimeChart({
     })) ?? []
 
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900">
+    <section className="glass-card">
       <header className="flex items-center justify-between gap-3 border-b border-slate-800 px-5 py-4">
         <div>
-          <h2 className="text-sm font-semibold text-white">
+          <h2 className="text-sm font-bold tracking-tight text-white">
             Tempo Médio de Primeira Resposta
           </h2>
           <p className="mt-0.5 text-xs text-slate-500">
