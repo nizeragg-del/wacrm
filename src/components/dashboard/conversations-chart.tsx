@@ -46,8 +46,8 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
   }, [data])
 
   return (
-    <section className="flex h-full flex-col glass-card">
-      <header className="flex items-center justify-between border-b border-white/5 px-5 py-4">
+    <section className="flex h-full flex-col relative overflow-hidden rounded-2xl border transition-all duration-200 hover:shadow-[0_4px_16px_rgba(0,0,0,0.2)]">
+      <header className="flex items-center justify-between border-b border-white/8 px-5 py-4">
         <div>
           <h2 className="text-sm font-bold tracking-tight text-white">Conversas ao Longo do Tempo</h2>
           <p className="mt-0.5 text-xs text-slate-400">Volume diário de mensagens por direção</p>
@@ -61,7 +61,7 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
               className={cn(
                 'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
                 range === r
-                  ? 'bg-primary text-white'
+                  ? 'bg-[#7c3aed] text-white'
                   : 'text-slate-400 hover:text-white hover:bg-white/5',
               )}
             >
