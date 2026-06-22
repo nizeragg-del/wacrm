@@ -16,7 +16,7 @@ interface PipelineDonutProps {
 export function PipelineDonut({ data, loading, currency }: PipelineDonutProps) {
   return (
     <section className="flex h-full flex-col glass-card">
-      <header className="border-b border-slate-800 px-5 py-4">
+      <header className="border-b border-white/5 px-5 py-4">
         <h2 className="text-sm font-bold tracking-tight text-white">Valor do Funil</h2>
         <p className="mt-0.5 text-xs text-slate-500">
           Negócios abertos por estágio

@@ -45,7 +45,7 @@ export function ResponseTimeChart({
 
   return (
     <section className="glass-card">
-      <header className="flex items-center justify-between gap-3 border-b border-slate-800 px-5 py-4">
+      <header className="flex items-center justify-between gap-3 border-b border-white/5 px-5 py-4">
         <div>
           <h2 className="text-sm font-bold tracking-tight text-white">
             Tempo Médio de Primeira Resposta
