@@ -1059,23 +1059,22 @@ async function advanceFromNodeKey(
       continue;
     }
     if (node.node_type === "send_buttons") {
+      // Persist current_node_key BEFORE sending to avoid race condition
+        db,
+        run.id,
+        run.current_node_key,
+        node.node_key,
+      );
+      if (!advanced) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "lost_race_during_advance",
+        });
+      }
+      return { outcome: "advanced" };
       await sendButtonsAndSuspend(db, run, node);
-      // Persist the new current_node_key via optimistic UPDATE.
-      const advanced = await advanceCurrentNodeKey(
-        db,
-        run.id,
-        run.current_node_key,
-        node.node_key,
-      );
-      if (!advanced) {
-        await logEvent(db, run.id, "error", node.node_key, {
-          reason: "lost_race_during_advance",
-        });
-      }
       return { outcome: "advanced" };
-    }
     if (node.node_type === "send_list") {
-      await sendListAndSuspend(db, run, node);
+      // Persist current_node_key BEFORE sending to avoid race condition
       const advanced = await advanceCurrentNodeKey(
         db,
         run.id,
@@ -1088,7 +1087,8 @@ async function advanceFromNodeKey(
         });
       }
       return { outcome: "advanced" };
-    }
+      await sendListAndSuspend(db, run, node);
+      return { outcome: "advanced" };
     if (node.node_type === "handoff") {
       await executeHandoff(db, run, node);
       return { outcome: "handed_off" };
