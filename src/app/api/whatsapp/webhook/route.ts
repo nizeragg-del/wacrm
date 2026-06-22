@@ -268,7 +268,14 @@ function mapEvolutionMessageToMeta(evoData: any): WhatsAppMessage | null {
 
   const from = key.remoteJid.split('@')[0]
   const id = key.id
-  const timestamp = String(evoData.messageTimestamp || Math.floor(Date.now() / 1000))
+  const rawTs = evoData.messageTimestamp
+  const timestamp = String(
+    typeof rawTs === 'number' && rawTs > 0
+      ? rawTs
+      : typeof rawTs === 'string' && !isNaN(parseInt(rawTs))
+        ? parseInt(rawTs)
+        : Math.floor(Date.now() / 1000)
+  )
 
   let type = 'text'
   let text: { body: string } | undefined
@@ -568,7 +575,7 @@ async function handleStatusUpdate(status: {
   //    (added in migration 003). The aggregate trigger on
   //    broadcast_recipients re-derives the parent broadcast's
   //    sent/delivered/read/failed counts automatically.
-  const tsIso = new Date(parseInt(status.timestamp) * 1000).toISOString()
+  const tsMs = parseInt(status?.timestamp || '0') * 1000; const tsIso = tsMs > 0 ? new Date(tsMs).toISOString() : new Date().toISOString()
 
   const { data: recipient, error: recFetchErr } = await supabaseAdmin()
     .from('broadcast_recipients')
@@ -827,7 +834,7 @@ async function processMessage(
     media_url: mediaUrl,
     message_id: message.id,
     status: 'delivered',
-    created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+    created_at: (() => { const ms = parseInt(message?.timestamp || '0') * 1000; return ms > 0 ? new Date(ms).toISOString() : new Date().toISOString(); })(),
     reply_to_message_id: replyToInternalId,
     // Only populated for content_type='interactive'. Migration 010 added
     // the column; null for every other content_type so existing inserts
