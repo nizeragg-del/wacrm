@@ -587,9 +587,11 @@ export async function sendInteractiveButtons(
     description: bodyText,
     footer: footerText || ' ',
     buttons: buttons.map((b) => ({
-      title: b.title,
-      displayText: b.title,
-      id: b.id,
+      type: 'reply',
+      reply: {
+        id: b.id,
+        title: b.title,
+      },
     })),
   }
 
@@ -656,7 +658,7 @@ export async function sendInteractiveList(
     title: headerText ?? '',
     description: bodyText,
     buttonText: buttonLabel,
-    values: sections.map((s) => ({
+    sections: sections.map((s) => ({
       title: s.title ?? '',
       rows: s.rows.map((r) => ({
         title: r.title,
