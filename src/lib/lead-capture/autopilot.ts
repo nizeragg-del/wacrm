@@ -84,10 +84,16 @@ export async function updateAutopilotConfig(
 export async function startAutopilot(accountId: string): Promise<void> {
   await updateAutopilotConfig(accountId, { is_active: true });
   
-  // Run autopilot in background
-  runAutopilotCycle(accountId).catch((error) => {
-    console.error('[autopilot] cycle failed:', error);
-  });
+  // Run autopilot in background with error logging
+  runAutopilotCycle(accountId)
+    .then(() => {
+      console.log('[autopilot] cycle completed successfully');
+    })
+    .catch((error) => {
+      console.error('[autopilot] cycle failed:', error);
+      // Update status to failed so user can see it
+      updateAutopilotConfig(accountId, { is_active: false }).catch(() => {});
+    });
 }
 
 export async function stopAutopilot(accountId: string): Promise<void> {
@@ -95,12 +101,16 @@ export async function stopAutopilot(accountId: string): Promise<void> {
 }
 
 export async function runAutopilotCycle(accountId: string): Promise<void> {
+  console.log(`[autopilot] Starting cycle for account ${accountId}`);
+  
   const config = await getAutopilotConfig(accountId);
   
   if (!config || !config.is_active) {
     console.log('[autopilot] not active, skipping cycle');
     return;
   }
+
+  console.log(`[autopilot] Config loaded: ${config.locations?.length || 0} locations, ${config.categories?.length || 0} categories`);
 
   const db = getSupabaseAdmin();
 
