@@ -240,32 +240,33 @@ async function processLocationCategory(
   }
 
   const campaignData = campaign as LeadCampaign;
-  let contacted = 0;
+  let saved = 0;
 
-  // Process leads
+  // STEP 1: Save ALL leads first (without sending messages)
+  console.log(`[autopilot] Saving ${withoutWebsite.length} leads...`);
   for (const business of withoutWebsite) {
-    if (contacted >= maxMessages) break;
-
     try {
-      const result = await processAutopilotLead(campaignData, business);
-      if (result) contacted++;
+      const result = await saveLeadOnly(campaignData, business);
+      if (result) saved++;
     } catch (error) {
-      console.error(`[autopilot] failed to process lead:`, error);
+      console.error(`[autopilot] failed to save lead:`, error);
     }
-
-    // Delay between leads
-    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+  console.log(`[autopilot] Saved ${saved} leads`);
 
-  // Update campaign status
+  // Update campaign with saved count
   await db
     .from('lead_campaigns')
     .update({
-      status: 'completed',
-      total_contacted: contacted,
+      total_without_website: saved,
       updated_at: new Date().toISOString(),
     })
     .eq('id', campaign.id);
+
+  // STEP 2: Send messages in background (don't block)
+  sendMessagesForCampaign(campaign.id, accountId, maxMessages)
+    .then(() => console.log(`[autopilot] Messages sent for campaign ${campaign.id}`))
+    .catch((error) => console.error(`[autopilot] Failed to send messages:`, error));
 }
 
 async function processAutopilotLead(
@@ -457,4 +458,166 @@ async function sendWhatsAppMessage(
     
     throw error;
   }
+}
+
+async function saveLeadOnly(
+  campaign: LeadCampaign,
+  business: OSMBusiness
+): Promise<boolean> {
+  const db = getSupabaseAdmin();
+
+  // Validate phone
+  const cleanPhone = (business.phone || '').replace(/\D/g, '');
+  if (cleanPhone.length < 10 || cleanPhone.length > 13) {
+    return false;
+  }
+
+  // Check for duplicates
+  const { data: existing } = await db
+    .from('captured_leads')
+    .select('id')
+    .eq('account_id', campaign.account_id)
+    .eq('phone', business.phone)
+    .maybeSingle();
+
+  if (existing) {
+    return false;
+  }
+
+  // Check if exists in this campaign
+  const { data: existingInCampaign } = await db
+    .from('captured_leads')
+    .select('id')
+    .eq('campaign_id', campaign.id)
+    .eq('phone', business.phone)
+    .maybeSingle();
+
+  if (existingInCampaign) {
+    return false;
+  }
+
+  // Create or find contact
+  const { data: existingContact } = await db
+    .from('contacts')
+    .select('id')
+    .eq('account_id', campaign.account_id)
+    .eq('phone', business.phone)
+    .maybeSingle();
+
+  let contactId = existingContact?.id || null;
+
+  if (!contactId) {
+    const { data: newContact } = await db
+      .from('contacts')
+      .insert({
+        account_id: campaign.account_id,
+        user_id: campaign.user_id,
+        phone: business.phone,
+        name: business.name,
+        company: business.name,
+      })
+      .select('id')
+      .single();
+
+    contactId = newContact?.id || null;
+  }
+
+  // Save lead WITHOUT message (will send later)
+  const { error } = await db
+    .from('captured_leads')
+    .insert({
+      campaign_id: campaign.id,
+      account_id: campaign.account_id,
+      contact_id: contactId,
+      business_name: business.name,
+      business_type: campaign.category,
+      address: business.address,
+      phone: business.phone,
+      email: business.email,
+      osm_id: business.osm_id,
+      latitude: business.lat,
+      longitude: business.lon,
+      has_website: false,
+      website_url: null,
+      status: 'pending',
+      proposal_message: null, // Will generate later
+    });
+
+  if (error) {
+    console.error('[autopilot] failed to save lead:', error);
+    return false;
+  }
+
+  return true;
+}
+
+async function sendMessagesForCampaign(
+  campaignId: string,
+  accountId: string,
+  maxMessages: number
+): Promise<void> {
+  const db = getSupabaseAdmin();
+
+  // Get all pending leads for this campaign
+  const { data: leads, error } = await db
+    .from('captured_leads')
+    .select('*')
+    .eq('campaign_id', campaignId)
+    .eq('status', 'pending')
+    .is('proposal_message', null)
+    .limit(maxMessages);
+
+  if (error || !leads || leads.length === 0) {
+    console.log('[autopilot] No pending leads to send messages to');
+    return;
+  }
+
+  console.log(`[autopilot] Sending messages to ${leads.length} leads...`);
+  let sent = 0;
+
+  for (const lead of leads) {
+    try {
+      // Generate message with AI
+      const city = lead.address?.split(',').pop() || 'São Paulo';
+      const proposalMessage = await generateProposalMessage({
+        business_name: lead.business_name,
+        business_type: lead.business_type || 'business',
+        city,
+        sender_name: 'Equipe WACRM',
+      });
+
+      // Update lead with message
+      await db
+        .from('captured_leads')
+        .update({ proposal_message: proposalMessage })
+        .eq('id', lead.id);
+
+      // Send WhatsApp
+      const messageId = await sendWhatsAppMessage(
+        accountId,
+        lead.phone || '',
+        proposalMessage
+      );
+
+      if (messageId) {
+        await db
+          .from('captured_leads')
+          .update({
+            status: 'contacted',
+            whatsapp_message_id: messageId,
+          })
+          .eq('id', lead.id);
+
+        sent++;
+        console.log(`[autopilot] Sent message to ${lead.business_name}`);
+      }
+
+      // Delay between messages (respect rate limits)
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    } catch (error) {
+      console.error(`[autopilot] Failed to send message to ${lead.business_name}:`, error);
+    }
+  }
+
+  console.log(`[autopilot] Sent ${sent} messages`);
 }
