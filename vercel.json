@@ -1,16 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/lead-capture-autopilot",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/cron/lead-capture-followup",
-      "schedule": "15 * * * *"
-    },
-    {
-      "path": "/api/cron/check-reminders",
-      "schedule": "*/5 * * * *"
-    }
-  ]
-}
+{}
