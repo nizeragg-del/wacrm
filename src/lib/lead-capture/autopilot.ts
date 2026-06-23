@@ -132,56 +132,44 @@ export async function runAutopilotCycle(accountId: string): Promise<void> {
 
   const remainingMessages = config.max_messages_per_day - (messagesToday || 0);
 
-  // Process each location
-  for (const location of config.locations) {
-    if (!config.is_active) break;
+  // Process ONLY FIRST location and FIRST category (to avoid timeout)
+  // Next run will process the next one
+  const firstLocation = config.locations[0];
+  const firstCategory = config.categories[0];
 
-    // Check limit again
-    const { count: currentCount } = await db
-      .from('captured_leads')
-      .select('id', { count: 'exact', head: true })
-      .eq('account_id', accountId)
-      .eq('status', 'contacted')
-      .gte('created_at', today.toISOString());
-
-    if ((currentCount || 0) >= config.max_messages_per_day) {
-      console.log('[autopilot] daily limit reached, stopping');
-      break;
-    }
-
-    // Process each category
-    for (const category of config.categories) {
-      if (!config.is_active) break;
-
-      console.log(`[autopilot] processing ${category} in ${location}`);
-
-      try {
-        await processLocationCategory(
-          accountId,
-          config.user_id,
-          location,
-          category,
-          config.radius_meters,
-          remainingMessages - (currentCount || 0)
-        );
-      } catch (error) {
-        console.error(`[autopilot] failed to process ${category} in ${location}:`, error);
-      }
-
-      // Longer delay between categories to avoid rate limits (10 seconds)
-      await new Promise((resolve) => setTimeout(resolve, 10000));
-    }
-
-    // Longer delay between locations (30 seconds)
-    await new Promise((resolve) => setTimeout(resolve, 30000));
+  if (!firstLocation || !firstCategory) {
+    console.log('[autopilot] no locations or categories configured');
+    return;
   }
 
-  // Update last run time
+  console.log(`[autopilot] processing ${firstCategory} in ${firstLocation}`);
+
+  try {
+    await processLocationCategory(
+      accountId,
+      config.user_id,
+      firstLocation,
+      firstCategory,
+      config.radius_meters,
+      Math.min(remainingMessages, 50) // Max 50 per run
+    );
+  } catch (error) {
+    console.error(`[autopilot] failed to process ${firstCategory} in ${firstLocation}:`, error);
+  }
+
+  // Rotate: move first location/category to end of array for next run
+  const newLocations = [...config.locations.slice(1), firstLocation];
+  const newCategories = firstLocation === config.locations[config.locations.length - 1]
+    ? [...config.categories.slice(1), firstCategory]
+    : config.categories;
+
   await updateAutopilotConfig(accountId, {
+    locations: newLocations,
+    categories: newCategories,
     last_run_at: new Date().toISOString(),
   });
 
-  console.log('[autopilot] cycle completed');
+  console.log('[autopilot] cycle completed, next run will process next category');
 }
 
 async function processLocationCategory(
@@ -199,10 +187,7 @@ async function processLocationCategory(
   const geocode = await geocodeLocation(location);
   console.log(`[autopilot] Geocoded: ${geocode.lat}, ${geocode.lon}`);
 
-  // Add delay for rate limits
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-
-  // Search businesses
+  // Search businesses (no delay needed - single request)
   console.log(`[autopilot] Searching ${category} in ${location}...`);
   const businesses = await searchBusinesses(geocode.lat, geocode.lon, category, radius);
   console.log(`[autopilot] Found ${businesses.length} businesses`);
@@ -242,11 +227,10 @@ async function processLocationCategory(
   const campaignData = campaign as LeadCampaign;
   let saved = 0;
 
-  // STEP 1: Save leads first (limited to avoid overload)
-  const LEADS_PER_BATCH = 50; // Save 50 leads at a time
-  const leadsToSave = withoutWebsite.slice(0, LEADS_PER_BATCH);
+  // Save leads (limited batch)
+  const leadsToSave = withoutWebsite.slice(0, maxMessages);
+  console.log(`[autopilot] Saving ${leadsToSave.length} leads...`);
   
-  console.log(`[autopilot] Saving ${leadsToSave.length} leads (max ${LEADS_PER_BATCH} per batch)...`);
   for (const business of leadsToSave) {
     try {
       const result = await saveLeadOnly(campaignData, business);
@@ -257,17 +241,18 @@ async function processLocationCategory(
   }
   console.log(`[autopilot] Saved ${saved} leads`);
 
-  // Update campaign with saved count
+  // Update campaign
   await db
     .from('lead_campaigns')
     .update({
       total_without_website: saved,
+      status: 'completed',
       updated_at: new Date().toISOString(),
     })
     .eq('id', campaign.id);
 
-  // STEP 2: Send messages in background (don't block)
-  sendMessagesForCampaign(campaign.id, accountId, maxMessages)
+  // Send messages in background (non-blocking)
+  sendMessagesForCampaign(campaign.id, accountId, Math.min(saved, 10))
     .then(() => console.log(`[autopilot] Messages sent for campaign ${campaign.id}`))
     .catch((error) => console.error(`[autopilot] Failed to send messages:`, error));
 }
