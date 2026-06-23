@@ -1214,6 +1214,40 @@ async function handleReplyForActiveRun(
   message: ParsedInbound,
   nodes: Map<string, FlowNodeRow>,
 ): Promise<DispatchInboundResult> {
+  // Re-read the run from DB to get the latest current_node_key and
+  // last_advanced_at. The in-memory `run` may be stale if another
+  // webhook handler advanced this run between dispatchInboundToFlows
+  // reading it and us getting here.
+  const { data: freshRun } = await db
+    .from("flow_runs")
+    .select("*")
+    .eq("id", run.id)
+    .eq("status", "active")
+    .maybeSingle();
+  if (freshRun) {
+    run = freshRun as FlowRunRow;
+  }
+
+  // Debounce: if the run was advanced less than 2 seconds ago, this
+  // message is likely a race-condition duplicate (two messages arrived
+  // before either handler finished). Drop it silently.
+  const DEBOUNCE_MS = 2_000;
+  if (run.last_advanced_at) {
+    const lastAdvanced = new Date(run.last_advanced_at).getTime();
+    const now = Date.now();
+    if (now - lastAdvanced < DEBOUNCE_MS) {
+      console.log(
+        `[flows] debounce: dropping message for run ${run.id} — ` +
+          `${now - lastAdvanced}ms since last advance (< ${DEBOUNCE_MS}ms)`,
+      );
+      return {
+        consumed: true,
+        flow_run_id: run.id,
+        outcome: "duplicate_inbound_ignored",
+      };
+    }
+  }
+
   // Note: we intentionally do NOT persist the raw customer text. A
   // `collect_input` prompt that asks "what's your card number?" would
   // otherwise leave the PAN sitting in flow_run_events.payload forever,

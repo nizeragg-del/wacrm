@@ -89,6 +89,7 @@ export default function LeadCapturePage() {
 
   // CNPJ Autopilot state
   const [cnpjLoading, setCnpjLoading] = useState(false);
+  const [cnpjFile, setCnpjFile] = useState<File | null>(null);
 
   const [newCampaign, setNewCampaign] = useState({
     name: '',
@@ -317,6 +318,11 @@ export default function LeadCapturePage() {
   }
 
   async function runCNPJAutopilot() {
+    if (!cnpjFile) {
+      toast.error('Selecione um arquivo JSONL primeiro');
+      return;
+    }
+
     setCnpjLoading(true);
     try {
       const supabase = createClient();
@@ -327,6 +333,28 @@ export default function LeadCapturePage() {
         return;
       }
 
+      // Upload file to Supabase Storage
+      const userId = session.user.id;
+      const timestamp = Date.now();
+      const storagePath = `${userId}/${timestamp}_${cnpjFile.name}`;
+
+      toast.info('Enviando arquivo...');
+
+      const { error: uploadError } = await supabase.storage
+        .from('cnpj-files')
+        .upload(storagePath, cnpjFile, {
+          contentType: 'application/x-ndjson',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        toast.error(`Erro ao enviar arquivo: ${uploadError.message}`);
+        return;
+      }
+
+      toast.info('Arquivo enviado! Iniciando processamento...');
+
       const response = await fetch('/api/lead-capture/cnpj-autopilot', {
         method: 'POST',
         headers: {
@@ -334,14 +362,22 @@ export default function LeadCapturePage() {
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          filePath: 'scripts/leads-export.jsonl',
+          storagePath,
+          fileName: cnpjFile.name,
           targetLeads: 100,
         }),
       });
 
-      if (!response.ok) throw new Error('Falha ao executar CNPJ autopilot');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Falha ao executar CNPJ autopilot');
+      }
 
       toast.success('CNPJ Autopilot iniciado! Verifique os logs.');
+      setCnpjFile(null);
+      // Reset file input
+      const fileInput = document.getElementById('cnpj-file-input') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
       fetchCampaigns();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao executar CNPJ autopilot');
@@ -443,25 +479,47 @@ export default function LeadCapturePage() {
                 Importe leads da base de dados do governo e envie propostas
               </CardDescription>
             </div>
-            <Button
-              onClick={runCNPJAutopilot}
-              disabled={cnpjLoading}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              {cnpjLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="mr-2 h-4 w-4" />
-              )}
-              Executar CNPJ
-            </Button>
+            <div className="flex items-center gap-2">
+              <input
+                id="cnpj-file-input"
+                type="file"
+                accept=".jsonl,.json,.ndjson"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setCnpjFile(file);
+                    toast.success(`Arquivo selecionado: ${file.name}`);
+                  }
+                }}
+              />
+              <Button
+                variant="outline"
+                onClick={() => document.getElementById('cnpj-file-input')?.click()}
+                disabled={cnpjLoading}
+              >
+                {cnpjFile ? cnpjFile.name : 'Selecionar arquivo'}
+              </Button>
+              <Button
+                onClick={runCNPJAutopilot}
+                disabled={cnpjLoading || !cnpjFile}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {cnpjLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="mr-2 h-4 w-4" />
+                )}
+                Executar CNPJ
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <p className="text-sm text-slate-400">Arquivo</p>
-              <p className="text-white font-medium">8.192 leads</p>
+              <p className="text-sm text-slate-400">Formato</p>
+              <p className="text-white font-medium">JSONL (1 lead/linha)</p>
             </div>
             <div>
               <p className="text-sm text-slate-400">Meta</p>

@@ -47,26 +47,28 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { filePath, targetLeads = 100 } = body;
+    const { storagePath, fileName, targetLeads = 100 } = body;
 
-    if (!filePath) {
-      return NextResponse.json({ error: 'filePath is required' }, { status: 400 });
+    if (!storagePath) {
+      return NextResponse.json({ error: 'storagePath is required' }, { status: 400 });
     }
 
-    console.log(`[cnpj-autopilot] Starting autopilot from ${filePath}`);
+    console.log(`[cnpj-autopilot] Starting autopilot from storage: ${storagePath}`);
 
     // Run autopilot in background (non-blocking)
     runCNPJAutopilot(
       user.accountId,
       user.userId,
-      filePath,
-      targetLeads
+      storagePath,
+      targetLeads,
+      fileName
     ).catch((error) => {
       console.error('[cnpj-autopilot] Failed:', error);
     });
 
     return NextResponse.json({ 
       message: 'CNPJ autopilot started',
+      storagePath,
       targetLeads 
     });
   } catch (error) {

@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { readFileSync } from 'fs';
 import { geocodeLocation } from './nominatim';
 import { searchBusinesses, filterWithoutWebsite } from './overpass';
 import { generateProposalMessage } from './proposal-generator';
@@ -378,11 +377,13 @@ async function processLocationCategory(
 export async function runCNPJAutopilot(
   accountId: string,
   userId: string,
-  filePath: string,
-  targetLeads: number = 100
+  storagePath: string,
+  targetLeads: number = 100,
+  fileName?: string
 ): Promise<void> {
   console.log(`[cnpj-autopilot] Starting CNPJ autopilot for account ${accountId}`);
   console.log(`[cnpj-autopilot] Target: ${targetLeads} leads`);
+  console.log(`[cnpj-autopilot] Storage path: ${storagePath}`);
 
   const db = getSupabaseAdmin();
 
@@ -415,6 +416,8 @@ export async function runCNPJAutopilot(
       total_found: 0,
       total_without_website: 0,
       total_contacted: 0,
+      storage_path: storagePath,
+      file_name: fileName || storagePath.split('/').pop(),
     })
     .select()
     .single();
@@ -426,8 +429,21 @@ export async function runCNPJAutopilot(
 
   console.log(`[cnpj-autopilot] Campaign created: ${campaign.id}`);
 
-  // Read JSONL file
-  const fileContent = readFileSync(filePath, 'utf-8');
+  // Download JSONL file from Supabase Storage
+  const { data: fileData, error: downloadError } = await db.storage
+    .from('cnpj-files')
+    .download(storagePath);
+
+  if (downloadError || !fileData) {
+    console.error('[cnpj-autopilot] Failed to download file:', downloadError);
+    await db
+      .from('lead_campaigns')
+      .update({ status: 'failed', updated_at: new Date().toISOString() })
+      .eq('id', campaign.id);
+    return;
+  }
+
+  const fileContent = await fileData.text();
   const allLines = fileContent.split('\n').filter(line => line.trim());
 
   // Get last processed line from config
@@ -445,18 +461,20 @@ export async function runCNPJAutopilot(
 
   let sent = 0;
   let processed = 0;
+  let skipped = 0;
   let currentLine = startLine;
 
   for (const line of lines) {
     if (sent >= targetLeads) break;
 
+    currentLine++;
+
     try {
       const lead: CNPJLead = JSON.parse(line);
       processed++;
-      currentLine++;
 
       // Skip if no WhatsApp number
-      if (!lead.telefone_whatsapp) continue;
+      if (!lead.telefone_whatsapp) { skipped++; continue; }
 
       // Check if WhatsApp number exists
       const whatsappExists = await checkWhatsAppNumber({
@@ -466,6 +484,7 @@ export async function runCNPJAutopilot(
       });
 
       if (!whatsappExists) {
+        skipped++;
         continue;
       }
 
@@ -477,7 +496,7 @@ export async function runCNPJAutopilot(
         .eq('phone', lead.telefone_whatsapp)
         .maybeSingle();
 
-      if (existingContact) continue;
+      if (existingContact) { skipped++; continue; }
 
       // Create contact
       const { data: newContact, error: contactError } = await db
@@ -493,7 +512,7 @@ export async function runCNPJAutopilot(
         .select('id')
         .single();
 
-      if (contactError || !newContact) continue;
+      if (contactError || !newContact) { skipped++; continue; }
 
       // Generate message
       const message = await generateProposalMessage({
@@ -525,7 +544,7 @@ export async function runCNPJAutopilot(
         .select()
         .single();
 
-      if (leadError || !leadData) continue;
+      if (leadError || !leadData) { skipped++; continue; }
 
       // Send WhatsApp message
       try {
@@ -558,7 +577,12 @@ export async function runCNPJAutopilot(
       await new Promise(resolve => setTimeout(resolve, 500));
 
     } catch (error) {
+      skipped++;
       console.error(`[cnpj-autopilot] Error processing lead:`, error);
+    }
+
+    if (currentLine % 10000 === 0) {
+      console.log(`[cnpj-autopilot] Progress: line ${currentLine} | sent ${sent}/${targetLeads} | skipped ${skipped}`);
     }
   }
 
@@ -568,7 +592,7 @@ export async function runCNPJAutopilot(
     .update({
       status: 'completed',
       total_found: processed,
-      total_without_website: processed,
+      total_without_website: skipped,
       total_contacted: sent,
       updated_at: new Date().toISOString(),
     })
@@ -584,8 +608,9 @@ export async function runCNPJAutopilot(
     .eq('account_id', accountId);
 
   console.log(`\n[cnpj-autopilot] Completed!`);
-  console.log(`- Processed: ${processed}`);
+  console.log(`- Processed (valid JSON): ${processed}`);
   console.log(`- Sent: ${sent}`);
+  console.log(`- Skipped (no WA/duplicate/error): ${skipped}`);
   console.log(`- Next run starts at line: ${currentLine}`);
   console.log(`- Campaign ID: ${campaign.id}`);
 }
