@@ -472,8 +472,91 @@ async function saveLeadOnly(
   // Validate phone
   const cleanPhone = (business.phone || '').replace(/\D/g, '');
   if (cleanPhone.length < 10 || cleanPhone.length > 13) {
+    console.log(`[autopilot] SKIP ${business.name}: phone "${business.phone}" invalid (${cleanPhone.length} digits)`);
     return false;
   }
+
+  // Check for duplicates
+  const { data: existing } = await db
+    .from('captured_leads')
+    .select('id')
+    .eq('account_id', campaign.account_id)
+    .eq('phone', business.phone)
+    .maybeSingle();
+
+  if (existing) {
+    console.log(`[autopilot] SKIP ${business.name}: phone already exists`);
+    return false;
+  }
+
+  // Check if exists in this campaign
+  const { data: existingInCampaign } = await db
+    .from('captured_leads')
+    .select('id')
+    .eq('campaign_id', campaign.id)
+    .eq('phone', business.phone)
+    .maybeSingle();
+
+  if (existingInCampaign) {
+    console.log(`[autopilot] SKIP ${business.name}: already in this campaign`);
+    return false;
+  }
+
+  // Create or find contact
+  const { data: existingContact } = await db
+    .from('contacts')
+    .select('id')
+    .eq('account_id', campaign.account_id)
+    .eq('phone', business.phone)
+    .maybeSingle();
+
+  let contactId = existingContact?.id || null;
+
+  if (!contactId) {
+    const { data: newContact } = await db
+      .from('contacts')
+      .insert({
+        account_id: campaign.account_id,
+        user_id: campaign.user_id,
+        phone: business.phone,
+        name: business.name,
+        company: business.name,
+      })
+      .select('id')
+      .single();
+
+    contactId = newContact?.id || null;
+  }
+
+  // Save lead WITHOUT message (will send later)
+  const { error } = await db
+    .from('captured_leads')
+    .insert({
+      campaign_id: campaign.id,
+      account_id: campaign.account_id,
+      contact_id: contactId,
+      business_name: business.name,
+      business_type: campaign.category,
+      address: business.address,
+      phone: business.phone,
+      email: business.email,
+      osm_id: business.osm_id,
+      latitude: business.lat,
+      longitude: business.lon,
+      has_website: false,
+      website_url: null,
+      status: 'pending',
+      proposal_message: null,
+    });
+
+  if (error) {
+    console.error(`[autopilot] FAILED to save ${business.name}:`, error.message);
+    return false;
+  }
+
+  console.log(`[autopilot] SAVED ${business.name} (${business.phone})`);
+  return true;
+}
 
   // Check for duplicates
   const { data: existing } = await db
