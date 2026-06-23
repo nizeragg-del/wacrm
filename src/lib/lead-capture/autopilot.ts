@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import { geocodeLocation } from './nominatim';
 import { searchBusinesses, filterWithoutWebsite } from './overpass';
 import { generateProposalMessage } from './proposal-generator';
+import { decrypt } from '@/lib/whatsapp/encryption';
+import { sendTextMessage } from '@/lib/whatsapp/meta-api';
 import { DEFAULT_CONFIG, type AutopilotConfig } from './config';
 import type { LeadCampaign, OSMBusiness } from './types';
 
@@ -402,7 +404,7 @@ async function sendWhatsAppMessage(
 
   const { data: config } = await db
     .from('whatsapp_config')
-    .select('phone_number_id, access_token')
+    .select('*')
     .eq('account_id', accountId)
     .maybeSingle();
 
@@ -410,31 +412,28 @@ async function sendWhatsAppMessage(
     throw new Error('WhatsApp not configured');
   }
 
-  const evolutionUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+  // Decrypt the access token
+  const accessToken = decrypt(config.access_token);
+
   const cleanPhone = phone.replace(/\D/g, '');
-  const jid = `${cleanPhone}@s.whatsapp.net`;
 
-  const response = await fetch(`${evolutionUrl}/message/sendText/${config.phone_number_id}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: process.env.EVOLUTION_API_KEY || '',
-    },
-    body: JSON.stringify({
-      number: jid,
+  try {
+    const result = await sendTextMessage({
+      phoneNumberId: config.phone_number_id,
+      accessToken,
+      to: cleanPhone,
       text: message,
-    }),
-  });
+    });
 
-  const data = await response.json();
-
-  if (data?.response?.message?.[0]?.exists === false) {
-    return null;
+    return result.messageId;
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    
+    // Handle "number doesn't exist on WhatsApp"
+    if (errorMsg.includes('exists: false')) {
+      return null;
+    }
+    
+    throw error;
   }
-
-  if (!response.ok) {
-    return null;
-  }
-
-  return data?.key?.id || data?.messageId || `evo-${Date.now()}`;
 }
