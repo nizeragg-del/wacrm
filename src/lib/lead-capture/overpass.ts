@@ -40,6 +40,9 @@ export async function searchBusinesses(
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
       const response = await fetch(OVERPASS_URL, {
         method: 'POST',
         headers: {
@@ -47,7 +50,10 @@ export async function searchBusinesses(
           'User-Agent': USER_AGENT,
         },
         body: `data=${encodeURIComponent(query)}`,
+        signal: controller.signal,
       });
+
+      clearTimeout(timeout);
 
       // Check for rate limiting
       if (response.status === 429) {
