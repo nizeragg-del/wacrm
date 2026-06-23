@@ -39,7 +39,7 @@ export async function searchBusinesses(
   
   // Simplified query - search one tag at a time
   const tag = osmTags[0];
-  const query = `[out:json][timeout:15];node["amenity"="${tag}"](around:${radius},${lat},${lon});out;`;
+  const query = `[out:json][timeout:25];node["amenity"="${tag}"](around:${radius},${lat},${lon});out;`;
 
   const MAX_RETRIES = 3;
   let lastError: Error | null = null;
@@ -49,11 +49,15 @@ export async function searchBusinesses(
     const endpointIndex = (attempt - 1) % OVERPASS_ENDPOINTS.length;
     const endpoint = OVERPASS_ENDPOINTS[endpointIndex];
     
-    console.log(`[overpass] Trying endpoint ${endpointIndex + 1}/${OVERPASS_ENDPOINTS.length}: ${endpoint}`);
+    console.log(`[overpass] Trying endpoint ${endpointIndex + 1}/${OVERPASS_ENDPOINTS.length}`);
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeout = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+      // Use FormData for proper encoding
+      const formData = new URLSearchParams();
+      formData.append('data', query);
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -61,7 +65,7 @@ export async function searchBusinesses(
           'Content-Type': 'application/x-www-form-urlencoded',
           'User-Agent': USER_AGENT,
         },
-        body: `data=${encodeURIComponent(query)}`,
+        body: formData.toString(),
         signal: controller.signal,
       });
 
