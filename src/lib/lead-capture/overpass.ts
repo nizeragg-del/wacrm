@@ -72,6 +72,15 @@ export async function searchBusinesses(
         continue;
       }
 
+      // Check for empty results
+      if (!data.elements || data.elements.length === 0) {
+        console.warn(`[overpass] Empty results for ${category} (attempt ${attempt}/${MAX_RETRIES})`);
+        if (attempt < MAX_RETRIES) {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          continue;
+        }
+      }
+
       interface OverpassElement {
         id: number;
         lat?: number;
@@ -80,7 +89,7 @@ export async function searchBusinesses(
         tags?: Record<string, string>;
       }
 
-      return (data.elements || []).map((el: OverpassElement) => ({
+      const results = (data.elements || []).map((el: OverpassElement) => ({
         name: el.tags?.name || 'Sem nome',
         address: formatAddress(el.tags),
         phone: el.tags?.phone || el.tags?.['contact:phone'] || null,
@@ -90,6 +99,10 @@ export async function searchBusinesses(
         lat: el.lat || el.center?.lat || 0,
         lon: el.lon || el.center?.lon || 0,
       }));
+
+      console.log(`[overpass] Found ${results.length} ${category} results`);
+      return results;
+
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       if (attempt < MAX_RETRIES) {
@@ -100,7 +113,8 @@ export async function searchBusinesses(
     }
   }
 
-  throw lastError || new Error('Overpass API failed after retries');
+  console.error(`[overpass] All retries failed for ${category}:`, lastError?.message);
+  return [];
 }
 
 function formatAddress(tags: Record<string, string> | undefined): string | null {
