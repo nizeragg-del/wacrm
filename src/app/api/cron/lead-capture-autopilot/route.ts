@@ -59,13 +59,21 @@ export async function GET(request: Request) {
   try {
     const { data: job } = await db
       .from('autopilot_config')
-      .select('account_id, user_id, cnpj_storage_paths, cnpj_file_name, cnpj_target_leads')
-      .eq('cnpj_job_status', 'running')
+      .select('account_id, user_id, cnpj_storage_paths, cnpj_file_name, cnpj_target_leads, cnpj_job_status')
+      .in('cnpj_job_status', ['pending', 'running'])
       .not('cnpj_storage_paths', 'is', null)
       .limit(1)
       .maybeSingle();
 
     if (job && job.cnpj_storage_paths && job.user_id) {
+      // Mark as running on first pickup
+      if (job.cnpj_job_status === 'pending') {
+        await db
+          .from('autopilot_config')
+          .update({ cnpj_job_status: 'running' })
+          .eq('account_id', job.account_id);
+      }
+
       try {
         const done = await processOneCNPJLead(
           job.account_id,
