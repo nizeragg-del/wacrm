@@ -111,6 +111,50 @@ export async function verifyPhoneNumber(
 }
 
 // ============================================================
+// WhatsApp Number Verification
+// ============================================================
+
+export interface CheckWhatsAppNumberArgs {
+  phoneNumberId: string
+  accessToken: string
+  phone: string
+}
+
+export async function checkWhatsAppNumber(
+  args: CheckWhatsAppNumberArgs
+): Promise<boolean> {
+  const { phoneNumberId, accessToken, phone } = args
+  const url = `${EVOLUTION_API_URL}/chat/whatsappNumbers/${phoneNumberId}`
+  
+  const cleanPhone = phone.replace(/\D/g, '')
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: getHeaders(accessToken),
+      body: JSON.stringify({ numbers: [cleanPhone] }),
+    })
+
+    if (!response.ok) {
+      console.error('checkWhatsAppNumber error:', response.statusText)
+      return false
+    }
+
+    const data = await response.json()
+    
+    // Response format: [{ exists: true, jid: "..." }]
+    if (Array.isArray(data) && data.length > 0) {
+      return data[0]?.exists === true
+    }
+    
+    return false
+  } catch (err) {
+    console.error('checkWhatsAppNumber failed:', err)
+    return false
+  }
+}
+
+// ============================================================
 // Webhook Registration
 // ============================================================
 
