@@ -57,6 +57,16 @@ export async function GET(request: Request) {
 
   // 2. Process ONE CNPJ lead from pending job (fast, < 10s)
   try {
+    // Debug: check all configs with CNPJ data
+    const { data: allConfigs } = await db
+      .from('autopilot_config')
+      .select('account_id, cnpj_job_status, cnpj_storage_paths')
+      .not('cnpj_storage_paths', 'is', null);
+
+    if (allConfigs && allConfigs.length > 0) {
+      console.log(`[cron] Found ${allConfigs.length} configs with CNPJ data:`, JSON.stringify(allConfigs.map(c => ({ id: c.account_id, status: c.cnpj_job_status, paths: c.cnpj_storage_paths }))));
+    }
+
     const { data: job } = await db
       .from('autopilot_config')
       .select('account_id, user_id, cnpj_storage_paths, cnpj_file_name, cnpj_target_leads, cnpj_job_status')
@@ -64,6 +74,8 @@ export async function GET(request: Request) {
       .not('cnpj_storage_paths', 'is', null)
       .limit(1)
       .maybeSingle();
+
+    console.log(`[cron] CNPJ job query result:`, job ? `found (${job.cnpj_job_status})` : 'not found');
 
     if (job && job.cnpj_storage_paths && job.user_id) {
       // Mark as running on first pickup
