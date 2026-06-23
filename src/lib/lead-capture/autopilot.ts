@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { readFileSync } from 'fs';
 import { geocodeLocation } from './nominatim';
 import { searchBusinesses, filterWithoutWebsite } from './overpass';
 import { generateProposalMessage } from './proposal-generator';
@@ -11,6 +12,18 @@ function getSupabaseAdmin() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+}
+
+interface CNPJLead {
+  cnpj: string;
+  nome: string;
+  endereco: string;
+  ddd: string;
+  telefone: string;
+  telefone_whatsapp: string;
+  email: string | null;
+  cnae: string;
+  uf: string;
 }
 
 export async function getAutopilotConfig(accountId: string): Promise<AutopilotConfig | null> {
@@ -356,5 +369,224 @@ async function processLocationCategory(
   }
 
   return sent;
+}
+
+// ============================================================
+// CNPJ Autopilot - Import leads from government database
+// ============================================================
+
+export async function runCNPJAutopilot(
+  accountId: string,
+  userId: string,
+  filePath: string,
+  targetLeads: number = 100
+): Promise<void> {
+  console.log(`[cnpj-autopilot] Starting CNPJ autopilot for account ${accountId}`);
+  console.log(`[cnpj-autopilot] Target: ${targetLeads} leads`);
+
+  const db = getSupabaseAdmin();
+
+  // Get WhatsApp config
+  const { data: whatsappConfig } = await db
+    .from('whatsapp_config')
+    .select('*')
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  if (!whatsappConfig) {
+    console.error('[cnpj-autopilot] WhatsApp not configured');
+    return;
+  }
+
+  const accessToken = decrypt(whatsappConfig.access_token);
+
+  // Create campaign
+  const today = new Date().toISOString().split('T')[0];
+  const { data: campaign, error: campaignError } = await db
+    .from('lead_campaigns')
+    .insert({
+      account_id: accountId,
+      user_id: userId,
+      name: `Auto: CNPJ - ${today}`,
+      location: 'Brasil',
+      category: 'cnpj',
+      radius_meters: 0,
+      status: 'running',
+      total_found: 0,
+      total_without_website: 0,
+      total_contacted: 0,
+    })
+    .select()
+    .single();
+
+  if (campaignError || !campaign) {
+    console.error('[cnpj-autopilot] Failed to create campaign:', campaignError);
+    return;
+  }
+
+  console.log(`[cnpj-autopilot] Campaign created: ${campaign.id}`);
+
+  // Read JSONL file
+  const fileContent = readFileSync(filePath, 'utf-8');
+  const allLines = fileContent.split('\n').filter(line => line.trim());
+
+  // Get last processed line from config
+  const { data: config } = await db
+    .from('autopilot_config')
+    .select('last_processed_line')
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  const startLine = (config as any)?.last_processed_line || 0;
+  const lines = allLines.slice(startLine);
+
+  console.log(`[cnpj-autopilot] Loaded ${allLines.length} total leads, starting from line ${startLine}`);
+  console.log(`[cnpj-autopilot] Processing ${lines.length} remaining leads`);
+
+  let sent = 0;
+  let processed = 0;
+  let currentLine = startLine;
+
+  for (const line of lines) {
+    if (sent >= targetLeads) break;
+
+    try {
+      const lead: CNPJLead = JSON.parse(line);
+      processed++;
+      currentLine++;
+
+      // Skip if no WhatsApp number
+      if (!lead.telefone_whatsapp) continue;
+
+      // Check if WhatsApp number exists
+      const whatsappExists = await checkWhatsAppNumber({
+        phoneNumberId: whatsappConfig.phone_number_id,
+        accessToken,
+        phone: lead.telefone_whatsapp,
+      });
+
+      if (!whatsappExists) {
+        continue;
+      }
+
+      // Check for duplicate phone
+      const { data: existingContact } = await db
+        .from('contacts')
+        .select('id')
+        .eq('account_id', accountId)
+        .eq('phone', lead.telefone_whatsapp)
+        .maybeSingle();
+
+      if (existingContact) continue;
+
+      // Create contact
+      const { data: newContact, error: contactError } = await db
+        .from('contacts')
+        .insert({
+          account_id: accountId,
+          user_id: userId,
+          phone: lead.telefone_whatsapp,
+          name: lead.nome,
+          company: lead.nome,
+          email: lead.email,
+        })
+        .select('id')
+        .single();
+
+      if (contactError || !newContact) continue;
+
+      // Generate message
+      const message = await generateProposalMessage({
+        business_name: lead.nome,
+        business_type: lead.cnae,
+        city: lead.uf,
+        sender_name: 'Equipe WACRM',
+      });
+
+      // Save lead
+      const { data: leadData, error: leadError } = await db
+        .from('captured_leads')
+        .insert({
+          campaign_id: campaign.id,
+          account_id: accountId,
+          contact_id: newContact.id,
+          business_name: lead.nome,
+          business_type: lead.cnae,
+          address: lead.endereco,
+          phone: lead.telefone_whatsapp,
+          email: lead.email,
+          latitude: null,
+          longitude: null,
+          has_website: false,
+          website_url: null,
+          status: 'pending',
+          proposal_message: message,
+        })
+        .select()
+        .single();
+
+      if (leadError || !leadData) continue;
+
+      // Send WhatsApp message
+      try {
+        const result = await sendTextMessage({
+          phoneNumberId: whatsappConfig.phone_number_id,
+          accessToken,
+          to: lead.telefone_whatsapp,
+          text: message,
+        });
+
+        // Update lead status
+        await db
+          .from('captured_leads')
+          .update({
+            status: 'contacted',
+            whatsapp_message_id: result.messageId,
+          })
+          .eq('id', leadData.id);
+
+        sent++;
+        console.log(`[cnpj-autopilot] ✅ Sent to ${lead.nome} (${lead.telefone_whatsapp}) [${sent}/${targetLeads}]`);
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes('exists: false')) {
+          console.log(`[cnpj-autopilot] SKIP ${lead.nome}: WhatsApp failed`);
+        }
+      }
+
+      // Delay between messages
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+    } catch (error) {
+      console.error(`[cnpj-autopilot] Error processing lead:`, error);
+    }
+  }
+
+  // Update campaign status
+  await db
+    .from('lead_campaigns')
+    .update({
+      status: 'completed',
+      total_found: processed,
+      total_without_website: processed,
+      total_contacted: sent,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', campaign.id);
+
+  // Save last processed line for resume
+  await db
+    .from('autopilot_config')
+    .update({
+      last_processed_line: currentLine,
+      last_run_at: new Date().toISOString(),
+    })
+    .eq('account_id', accountId);
+
+  console.log(`\n[cnpj-autopilot] Completed!`);
+  console.log(`- Processed: ${processed}`);
+  console.log(`- Sent: ${sent}`);
+  console.log(`- Next run starts at line: ${currentLine}`);
+  console.log(`- Campaign ID: ${campaign.id}`);
 }
 
