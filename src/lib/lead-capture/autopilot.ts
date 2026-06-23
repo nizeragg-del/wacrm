@@ -146,18 +146,27 @@ export async function runAutopilotCycle(accountId: string): Promise<void> {
       console.log(`[autopilot] processing ${category} in ${location} (${totalSent}/${targetLeads})`);
 
       try {
-        const sent = await processLocationCategory(
-          accountId,
-          config.user_id,
-          location,
-          category,
-          config.radius_meters,
-          targetLeads - totalSent
-        );
-        totalSent += sent;
+        // Add timeout wrapper to prevent hanging
+        const result = await Promise.race([
+          processLocationCategory(
+            accountId,
+            config.user_id,
+            location,
+            category,
+            config.radius_meters,
+            targetLeads - totalSent
+          ),
+          new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout after 30s')), 30000)
+          )
+        ]);
+        
+        totalSent += result;
         console.log(`[autopilot] Progress: ${totalSent}/${targetLeads} leads sent`);
       } catch (error) {
-        console.error(`[autopilot] FAILED to process ${category} in ${location}:`, error);
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error(`[autopilot] SKIP ${category} in ${location}: ${msg}`);
+        // Continue to next location/category
       }
     }
   }
