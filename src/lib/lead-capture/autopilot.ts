@@ -242,9 +242,12 @@ async function processLocationCategory(
   const campaignData = campaign as LeadCampaign;
   let saved = 0;
 
-  // STEP 1: Save ALL leads first (without sending messages)
-  console.log(`[autopilot] Saving ${withoutWebsite.length} leads...`);
-  for (const business of withoutWebsite) {
+  // STEP 1: Save leads first (limited to avoid overload)
+  const LEADS_PER_BATCH = 50; // Save 50 leads at a time
+  const leadsToSave = withoutWebsite.slice(0, LEADS_PER_BATCH);
+  
+  console.log(`[autopilot] Saving ${leadsToSave.length} leads (max ${LEADS_PER_BATCH} per batch)...`);
+  for (const business of leadsToSave) {
     try {
       const result = await saveLeadOnly(campaignData, business);
       if (result) saved++;
