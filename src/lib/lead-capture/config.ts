@@ -16,15 +16,15 @@ export interface AutopilotConfig {
 }
 
 export const DEFAULT_CATEGORIES = [
-  'restaurant',
   'dentist',
-  'beauty',
-  'bakery',
-  'pharmacy',
-  'gym',
-  'mechanic',
   'lawyer',
+  'beauty',
+  'gym',
+  'pet',
+  'school',
+  'mechanic',
   'vet',
+  'bakery',
   'bar',
 ];
 

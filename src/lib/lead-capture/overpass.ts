@@ -21,6 +21,7 @@ const CATEGORY_MAP: Record<string, string[]> = {
   bar: ['bar'],
   shop: ['shop'],
   office: ['office'],
+  pet: ['veterinary', 'pet_grooming', 'pet_shop'],
 };
 
 export async function searchBusinesses(
