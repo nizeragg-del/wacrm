@@ -1,6 +1,11 @@
 import type { OSMBusiness } from './types';
 
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+// Multiple Overpass endpoints for failover
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://lz4.overpass-api.de/api/interpreter',
+  'https://z.overpass-api.de/api/interpreter',
+];
 const USER_AGENT = 'WACRM-LeadCapture/1.0 (https://wacrm.com)';
 
 const CATEGORY_MAP: Record<string, string[]> = {
@@ -31,19 +36,26 @@ export async function searchBusinesses(
   radius: number
 ): Promise<OSMBusiness[]> {
   const osmTags = CATEGORY_MAP[category.toLowerCase()] || [category.toLowerCase()];
-  const tagFilters = osmTags.map((tag) => `["amenity"="${tag}"]`).join('');
-
-  const query = `[out:json][timeout:25];(node${tagFilters}(around:${radius},${lat},${lon});way${tagFilters}(around:${radius},${lat},${lon}););out center;`;
+  
+  // Simplified query - search one tag at a time
+  const tag = osmTags[0];
+  const query = `[out:json][timeout:15];node["amenity"="${tag}"](around:${radius},${lat},${lon});out;`;
 
   const MAX_RETRIES = 3;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    // Try different endpoints
+    const endpointIndex = (attempt - 1) % OVERPASS_ENDPOINTS.length;
+    const endpoint = OVERPASS_ENDPOINTS[endpointIndex];
+    
+    console.log(`[overpass] Trying endpoint ${endpointIndex + 1}/${OVERPASS_ENDPOINTS.length}: ${endpoint}`);
+
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+      const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-      const response = await fetch(OVERPASS_URL, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -57,9 +69,8 @@ export async function searchBusinesses(
 
       // Check for rate limiting
       if (response.status === 429) {
-        const retryAfter = response.headers.get('retry-after');
-        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : attempt * 5000;
-        console.warn(`[overpass] Rate limited, waiting ${waitTime}ms (attempt ${attempt}/${MAX_RETRIES})`);
+        const waitTime = attempt * 3000;
+        console.warn(`[overpass] Rate limited on endpoint ${endpointIndex + 1}, waiting ${waitTime}ms`);
         await new Promise((resolve) => setTimeout(resolve, waitTime));
         continue;
       }
@@ -70,19 +81,20 @@ export async function searchBusinesses(
 
       const data = await response.json();
 
-      // Check for rate limit error in response
-      if (data.error && data.error.includes('rate_limited')) {
-        const waitTime = attempt * 5000;
-        console.warn(`[overpass] Rate limited in response, waiting ${waitTime}ms (attempt ${attempt}/${MAX_RETRIES})`);
-        await new Promise((resolve) => setTimeout(resolve, waitTime));
-        continue;
+      // Check for errors in response
+      if (data.error) {
+        console.warn(`[overpass] API error: ${data.error}`);
+        if (attempt < MAX_RETRIES) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          continue;
+        }
       }
 
       // Check for empty results
       if (!data.elements || data.elements.length === 0) {
-        console.warn(`[overpass] Empty results for ${category} (attempt ${attempt}/${MAX_RETRIES})`);
+        console.warn(`[overpass] Empty results for ${tag} (attempt ${attempt}/${MAX_RETRIES})`);
         if (attempt < MAX_RETRIES) {
-          await new Promise((resolve) => setTimeout(resolve, 3000));
+          await new Promise((resolve) => setTimeout(resolve, 2000));
           continue;
         }
       }
@@ -106,14 +118,16 @@ export async function searchBusinesses(
         lon: el.lon || el.center?.lon || 0,
       }));
 
-      console.log(`[overpass] Found ${results.length} ${category} results`);
+      console.log(`[overpass] Found ${results.length} ${tag} results`);
       return results;
 
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(`[overpass] Attempt ${attempt} failed:`, lastError.message);
+      
       if (attempt < MAX_RETRIES) {
-        const waitTime = attempt * 3000;
-        console.warn(`[overpass] Request failed, retrying in ${waitTime}ms (attempt ${attempt}/${MAX_RETRIES})`);
+        const waitTime = attempt * 2000;
+        console.warn(`[overpass] Retrying in ${waitTime}ms...`);
         await new Promise((resolve) => setTimeout(resolve, waitTime));
       }
     }
