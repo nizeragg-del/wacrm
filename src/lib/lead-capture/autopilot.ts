@@ -151,10 +151,10 @@ export async function runAutopilotCycle(accountId: string): Promise<void> {
       firstLocation,
       firstCategory,
       config.radius_meters,
-      Math.min(remainingMessages, 50) // Max 50 per run
+      Math.min(remainingMessages, 50)
     );
   } catch (error) {
-    console.error(`[autopilot] failed to process ${firstCategory} in ${firstLocation}:`, error);
+    console.error(`[autopilot] FAILED to process ${firstCategory} in ${firstLocation}:`, error);
   }
 
   // Rotate: move first location/category to end of array for next run
@@ -182,10 +182,19 @@ async function processLocationCategory(
 ): Promise<void> {
   const db = getSupabaseAdmin();
 
+  console.log(`[autopilot] === Starting processLocationCategory ===`);
+  console.log(`[autopilot] Location: ${location}, Category: ${category}, Radius: ${radius}`);
+
   // Geocode location
   console.log(`[autopilot] Geocoding ${location}...`);
-  const geocode = await geocodeLocation(location);
-  console.log(`[autopilot] Geocoded: ${geocode.lat}, ${geocode.lon}`);
+  let geocode;
+  try {
+    geocode = await geocodeLocation(location);
+    console.log(`[autopilot] Geocoded: ${geocode.lat}, ${geocode.lon}`);
+  } catch (error) {
+    console.error(`[autopilot] GEOCODING FAILED:`, error);
+    throw error;
+  }
 
   // Search businesses (no delay needed - single request)
   console.log(`[autopilot] Searching ${category} in ${location}...`);
