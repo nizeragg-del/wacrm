@@ -628,3 +628,259 @@ export async function runCNPJAutopilot(
   console.log(`- Campaign ID: ${campaign.id}`);
 }
 
+// ============================================================
+// Process ONE lead per cron tick (must finish in < 10s)
+// ============================================================
+
+export async function processOneCNPJLead(
+  accountId: string,
+  userId: string,
+  storagePaths: string[],
+  targetLeads: number
+): Promise<boolean> {
+  const db = getSupabaseAdmin();
+
+  // Get WhatsApp config
+  const { data: whatsappConfig } = await db
+    .from('whatsapp_config')
+    .select('*')
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  if (!whatsappConfig) return false;
+
+  const accessToken = decrypt(whatsappConfig.access_token);
+
+  // Get or create campaign
+  const today = new Date().toISOString().split('T')[0];
+  let { data: campaign } = await db
+    .from('lead_campaigns')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('name', `Auto: CNPJ - ${today}`)
+    .eq('status', 'running')
+    .maybeSingle();
+
+  if (!campaign) {
+    const { data: newCampaign } = await db
+      .from('lead_campaigns')
+      .insert({
+        account_id: accountId,
+        user_id: userId,
+        name: `Auto: CNPJ - ${today}`,
+        location: 'Brasil',
+        category: 'cnpj',
+        radius_meters: 0,
+        status: 'running',
+        total_found: 0,
+        total_without_website: 0,
+        total_contacted: 0,
+        storage_path: storagePaths[0],
+        file_name: storagePaths[0].split('/').pop(),
+      })
+      .select('id')
+      .single();
+    campaign = newCampaign;
+  }
+
+  if (!campaign) return false;
+
+  // Get current position
+  const { data: config } = await db
+    .from('autopilot_config')
+    .select('last_processed_line')
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  const startLine = (config as any)?.last_processed_line || 0;
+
+  // Check if we already hit target
+  const { count: sentToday } = await db
+    .from('captured_leads')
+    .select('id', { count: 'exact', head: true })
+    .eq('account_id', accountId)
+    .eq('status', 'contacted')
+    .gte('created_at', new Date().toISOString().split('T')[0] + 'T00:00:00Z');
+
+  if ((sentToday || 0) >= targetLeads) {
+    // Update campaign as completed
+    await db
+      .from('lead_campaigns')
+      .update({ status: 'completed', updated_at: new Date().toISOString() })
+      .eq('id', campaign.id);
+    return true;
+  }
+
+  // Download first file chunk to find our line
+  const CHUNK = 10000;
+  const fileChunkIndex = Math.floor(startLine / CHUNK);
+  const offsetInChunk = startLine % CHUNK;
+
+  if (fileChunkIndex >= storagePaths.length) {
+    await db
+      .from('lead_campaigns')
+      .update({ status: 'completed', updated_at: new Date().toISOString() })
+      .eq('id', campaign.id);
+    return true;
+  }
+
+  const { data: fileData, error: dlErr } = await db.storage
+    .from('cnpj-files')
+    .download(storagePaths[fileChunkIndex]);
+
+  if (dlErr || !fileData) {
+    console.error(`[cnpj-one] Failed to download chunk ${fileChunkIndex}:`, dlErr);
+    return false;
+  }
+
+  const content = await fileData.text();
+  const lines = content.split('\n').filter(l => l.trim());
+
+  if (offsetInChunk >= lines.length) {
+    // Move to next chunk
+    if (fileChunkIndex + 1 < storagePaths.length) {
+      await db
+        .from('autopilot_config')
+        .update({ last_processed_line: (fileChunkIndex + 1) * CHUNK })
+        .eq('account_id', accountId);
+      return false;
+    }
+    await db
+      .from('lead_campaigns')
+      .update({ status: 'completed', updated_at: new Date().toISOString() })
+      .eq('id', campaign.id);
+    return true;
+  }
+
+  // Process lines starting from offset until we find one valid lead
+  let processed = 0;
+  let sent = 0;
+  let currentLine = startLine;
+
+  for (let i = offsetInChunk; i < lines.length && sent === 0; i++) {
+    currentLine++;
+    processed++;
+
+    try {
+      const lead: CNPJLead = JSON.parse(lines[i]);
+
+      if (!lead.telefone_whatsapp) continue;
+
+      const whatsappExists = await checkWhatsAppNumber({
+        phoneNumberId: whatsappConfig.phone_number_id,
+        accessToken,
+        phone: lead.telefone_whatsapp,
+      });
+
+      if (!whatsappExists) continue;
+
+      // Check duplicate
+      const { data: existing } = await db
+        .from('contacts')
+        .select('id')
+        .eq('account_id', accountId)
+        .eq('phone', lead.telefone_whatsapp)
+        .maybeSingle();
+
+      if (existing) continue;
+
+      // Create contact
+      const { data: newContact } = await db
+        .from('contacts')
+        .insert({
+          account_id: accountId,
+          user_id: userId,
+          phone: lead.telefone_whatsapp,
+          name: lead.nome,
+          company: lead.nome,
+          email: lead.email,
+        })
+        .select('id')
+        .single();
+
+      if (!newContact) continue;
+
+      // Generate message
+      const message = await generateProposalMessage({
+        business_name: lead.nome,
+        business_type: lead.cnae,
+        city: lead.uf,
+        sender_name: 'Equipe WACRM',
+      });
+
+      // Save lead
+      const { data: leadData } = await db
+        .from('captured_leads')
+        .insert({
+          campaign_id: campaign.id,
+          account_id: accountId,
+          contact_id: newContact.id,
+          business_name: lead.nome,
+          business_type: lead.cnae,
+          address: lead.endereco,
+          phone: lead.telefone_whatsapp,
+          email: lead.email,
+          latitude: null,
+          longitude: null,
+          has_website: false,
+          website_url: null,
+          status: 'pending',
+          proposal_message: message,
+        })
+        .select()
+        .single();
+
+      if (!leadData) continue;
+
+      // Send WhatsApp
+      try {
+        const result = await sendTextMessage({
+          phoneNumberId: whatsappConfig.phone_number_id,
+          accessToken,
+          to: lead.telefone_whatsapp,
+          text: message,
+        });
+
+        await db
+          .from('captured_leads')
+          .update({ status: 'contacted', whatsapp_message_id: result.messageId })
+          .eq('id', leadData.id);
+
+        // Update campaign counter
+        await db.rpc('increment_campaign_contacted', { p_campaign_id: campaign.id });
+
+        sent++;
+        console.log(`[cnpj-one] ✅ Sent to ${lead.nome} (${lead.telefone_whatsapp})`);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (!msg.includes('exists: false')) {
+          console.error(`[cnpj-one] Send failed: ${msg}`);
+        }
+      }
+    } catch (error) {
+      // Skip malformed JSON
+    }
+  }
+
+  // Save progress
+  await db
+    .from('autopilot_config')
+    .update({
+      last_processed_line: currentLine,
+      last_run_at: new Date().toISOString(),
+    })
+    .eq('account_id', accountId);
+
+  // Update campaign totals
+  await db
+    .from('lead_campaigns')
+    .update({
+      total_found: (await db.from('lead_campaigns').select('total_found').eq('id', campaign.id).single()).data?.total_found + processed || processed,
+      total_contacted: (sentToday || 0) + sent,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', campaign.id);
+
+  return (sentToday || 0) + sent >= targetLeads;
+}
+

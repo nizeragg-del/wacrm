@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/lead-capture-autopilot",
-      "schedule": "*/2 * * * *"
+      "schedule": "* * * * *"
     }
   ]
 }

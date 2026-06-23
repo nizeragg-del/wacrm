@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { runAutopilotCycle, runCNPJAutopilot } from '@/lib/lead-capture/autopilot';
+import { runAutopilotCycle, processOneCNPJLead } from '@/lib/lead-capture/autopilot';
 
 export async function GET(request: Request) {
   const expected = process.env.AUTOMATION_CRON_SECRET;
@@ -25,9 +25,9 @@ export async function GET(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const results: { autopilot: number; cnpj: number; errors: string[] } = {
+  const results: { autopilot: number; cnpjProcessed: number; errors: string[] } = {
     autopilot: 0,
-    cnpj: 0,
+    cnpjProcessed: 0,
     errors: [],
   };
 
@@ -53,48 +53,36 @@ export async function GET(request: Request) {
     results.errors.push(`autopilot query failed: ${error}`);
   }
 
-  // 2. Process pending CNPJ autopilot jobs
+  // 2. Process ONE CNPJ lead from pending job (fast, < 10s)
   try {
-    const { data: cnpjJobs } = await db
+    const { data: job } = await db
       .from('autopilot_config')
       .select('account_id, user_id, cnpj_storage_paths, cnpj_file_name, cnpj_target_leads')
-      .eq('cnpj_job_status', 'pending')
-      .not('cnpj_storage_paths', 'is', null);
+      .eq('cnpj_job_status', 'running')
+      .not('cnpj_storage_paths', 'is', null)
+      .limit(1)
+      .maybeSingle();
 
-    if (cnpjJobs && cnpjJobs.length > 0) {
-      for (const job of cnpjJobs) {
-        if (!job.cnpj_storage_paths || !job.user_id) continue;
+    if (job && job.cnpj_storage_paths && job.user_id) {
+      try {
+        const done = await processOneCNPJLead(
+          job.account_id,
+          job.user_id,
+          job.cnpj_storage_paths,
+          job.cnpj_target_leads || 100
+        );
 
-        try {
-          // Mark as running
-          await db
-            .from('autopilot_config')
-            .update({ cnpj_job_status: 'running' })
-            .eq('account_id', job.account_id);
-
-          await runCNPJAutopilot(
-            job.account_id,
-            job.user_id,
-            job.cnpj_storage_paths,
-            job.cnpj_target_leads || 100,
-            job.cnpj_file_name
-          );
-
-          // Mark as done
+        if (done) {
           await db
             .from('autopilot_config')
             .update({ cnpj_job_status: 'completed' })
             .eq('account_id', job.account_id);
-
-          results.cnpj++;
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : String(error);
-          results.errors.push(`cnpj ${job.account_id}: ${msg}`);
-          await db
-            .from('autopilot_config')
-            .update({ cnpj_job_status: 'failed' })
-            .eq('account_id', job.account_id);
         }
+
+        results.cnpjProcessed = 1;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        results.errors.push(`cnpj ${job.account_id}: ${msg}`);
       }
     }
   } catch (error) {
