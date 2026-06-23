@@ -195,14 +195,20 @@ async function processLocationCategory(
   const db = getSupabaseAdmin();
 
   // Geocode location
+  console.log(`[autopilot] Geocoding ${location}...`);
   const geocode = await geocodeLocation(location);
+  console.log(`[autopilot] Geocoded: ${geocode.lat}, ${geocode.lon}`);
 
   // Add delay for rate limits
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // Search businesses
+  console.log(`[autopilot] Searching ${category} in ${location}...`);
   const businesses = await searchBusinesses(geocode.lat, geocode.lon, category, radius);
+  console.log(`[autopilot] Found ${businesses.length} businesses`);
+  
   const withoutWebsite = filterWithoutWebsite(businesses);
+  console.log(`[autopilot] ${withoutWebsite.length} without website`);
 
   if (withoutWebsite.length === 0) {
     console.log(`[autopilot] no businesses without website found for ${category} in ${location}`);
@@ -210,6 +216,7 @@ async function processLocationCategory(
   }
 
   // Create campaign
+  console.log(`[autopilot] Creating campaign...`);
   const { data: campaign, error: campaignError } = await db
     .from('lead_campaigns')
     .insert({
