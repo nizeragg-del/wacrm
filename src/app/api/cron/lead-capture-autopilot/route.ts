@@ -9,7 +9,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'cron not configured' }, { status: 503 });
   }
 
-  const supplied = request.headers.get('x-cron-secret') ?? '';
+  // Accept secret from header OR query param (for external cron services)
+  const url = new URL(request.url);
+  const supplied = request.headers.get('x-cron-secret') ?? url.searchParams.get('secret') ?? '';
   const suppliedBuf = Buffer.from(supplied);
   const expectedBuf = Buffer.from(expected);
 
