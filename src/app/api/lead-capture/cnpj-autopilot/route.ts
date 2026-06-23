@@ -55,21 +55,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'storagePaths or storagePath is required' }, { status: 400 });
     }
 
-    console.log(`[cnpj-autopilot] Starting autopilot from ${paths.length} file(s)`);
+    const db = getSupabaseAdmin();
 
-    // Run autopilot in background (non-blocking)
-    runCNPJAutopilot(
-      user.accountId,
-      user.userId,
-      paths,
-      targetLeads,
-      fileName
-    ).catch((error) => {
-      console.error('[cnpj-autopilot] Failed:', error);
-    });
+    // Save job to autopilot_config for cron pickup
+    const { error } = await db
+      .from('autopilot_config')
+      .upsert({
+        account_id: user.accountId,
+        user_id: user.userId,
+        cnpj_storage_paths: paths,
+        cnpj_file_name: fileName,
+        cnpj_target_leads: targetLeads,
+        cnpj_job_status: 'pending',
+        is_active: false,
+        location: 'Brasil',
+        locations: ['Brasil'],
+        categories: ['cnpj'],
+        radius_meters: 0,
+        max_messages_per_day: 100,
+        follow_up_enabled: false,
+        follow_up_delay_hours: 24,
+      }, { onConflict: 'account_id' });
+
+    if (error) {
+      console.error('[cnpj-autopilot] Failed to save job:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    console.log(`[cnpj-autopilot] Job saved for account ${user.accountId}, ${paths.length} file(s)`);
 
     return NextResponse.json({ 
-      message: 'CNPJ autopilot started',
+      message: 'CNPJ job saved. Cron will process it shortly.',
       files: paths.length,
       targetLeads 
     });
