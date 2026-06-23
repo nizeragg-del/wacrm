@@ -11,6 +11,15 @@ import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 export default function InboxPage() {
   const router = useRouter();
@@ -38,6 +47,11 @@ export default function InboxPage() {
    * once on conversationId-change as usual.
    */
   const [resyncToken, setResyncToken] = useState(0);
+
+  // Delete conversation confirmation dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [conversationToDelete, setConversationToDelete] = useState<Conversation | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Fire the deep-link auto-select exactly once per URL — subsequent
   // list refreshes (realtime, manual refetch) must not snap the user
@@ -483,6 +497,70 @@ export default function InboxPage() {
     [activeConversation]
   );
 
+  const handleDeleteConversation = useCallback(
+    (conversation: Conversation) => {
+      setConversationToDelete(conversation);
+      setDeleteDialogOpen(true);
+    },
+    []
+  );
+
+  const confirmDeleteConversation = useCallback(async () => {
+    if (!conversationToDelete) return;
+
+    setIsDeleting(true);
+    const supabase = createClient();
+
+    try {
+      // First, delete all messages associated with the conversation
+      const { error: messagesError } = await supabase
+        .from("messages")
+        .delete()
+        .eq("conversation_id", conversationToDelete.id);
+
+      if (messagesError) {
+        console.error("Failed to delete messages:", messagesError);
+        toast.error("Falha ao excluir mensagens");
+        setIsDeleting(false);
+        return;
+      }
+
+      // Then delete the conversation itself
+      const { error: conversationError } = await supabase
+        .from("conversations")
+        .delete()
+        .eq("id", conversationToDelete.id);
+
+      if (conversationError) {
+        console.error("Failed to delete conversation:", conversationError);
+        toast.error("Falha ao excluir conversa");
+        setIsDeleting(false);
+        return;
+      }
+
+      // Update local state - remove from conversations list
+      setConversations((prev) => prev.filter((c) => c.id !== conversationToDelete.id));
+
+      // If the deleted conversation was active, clear it
+      if (activeConversation?.id === conversationToDelete.id) {
+        setActiveConversation(null);
+        setActiveContact(null);
+        setMessages([]);
+        autoSelectedForDeepLinkRef.current = null;
+        router.replace("/inbox", { scroll: false });
+      }
+
+      toast.success("Conversa excluída com sucesso");
+      setDeleteDialogOpen(false);
+      setConversationToDelete(null);
+    } catch (error) {
+      console.error("Error deleting conversation:", error);
+      toast.error("Erro ao excluir conversa");
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [conversationToDelete, activeConversation, router]);
+
   const handleAssignChange = useCallback(
     (conversationId: string, assignedAgentId: string | null) => {
       setConversations((prev) =>
@@ -536,6 +614,7 @@ export default function InboxPage() {
           <ConversationList
             activeConversationId={activeConversation?.id ?? null}
             onSelect={handleSelectConversation}
+            onDelete={handleDeleteConversation}
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
@@ -578,6 +657,40 @@ export default function InboxPage() {
           <ContactSidebar contact={activeContact} />
         </div>
       </div>
+
+      {/* Delete Conversation Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="bg-slate-900 border-slate-700">
+          <DialogHeader>
+            <DialogTitle className="text-white">Excluir conversa</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Tem certeza que deseja excluir esta conversa? Esta ação não pode ser desfeita.
+              Todas as mensagens serão removidas permanentemente.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setConversationToDelete(null);
+              }}
+              disabled={isDeleting}
+              className="border-slate-700 text-slate-300 hover:bg-slate-800"
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteConversation}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? "Excluindo..." : "Excluir"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

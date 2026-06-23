@@ -129,7 +129,7 @@ function MessageContent({ message }: { message: Message }) {
       return (
         <div>
           {message.media_url ? (
-            <MediaImage url={message.media_url} alt="Shared image" />
+            <MediaImage url={message.media_url} alt="Imagem compartilhada" />
           ) : (
             <MediaUnavailable label="Imagem" />
           )}
