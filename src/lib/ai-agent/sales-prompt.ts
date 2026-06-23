@@ -141,7 +141,7 @@ Quando precisar executar uma ação, use:
 [ACTION:SEND_UPSELL] - Envia proposta de upsell
 
 Exemplo de resposta com ação:
-"Perfeito! Vou criar o site profissional para a ${business_name} agora mesmo. É só um momento! 🚀
+"Perfeito! Vou criar o site profissional para a empresa agora mesmo. É só um momento! 🚀
 
 [ACTION:GENERATE_WEBSITE]"
 `
