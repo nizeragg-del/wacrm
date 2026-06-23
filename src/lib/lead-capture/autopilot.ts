@@ -221,7 +221,7 @@ async function processLocationCategory(
       const whatsappExists = await checkWhatsAppNumber({
         phoneNumberId: whatsappConfig.phone_number_id,
         accessToken,
-        phone: business.phone,
+        phone: business.phone || '',
       });
 
       if (!whatsappExists) {
