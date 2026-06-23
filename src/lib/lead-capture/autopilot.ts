@@ -277,6 +277,7 @@ async function processAutopilotLead(
   // Validate phone
   const cleanPhone = (business.phone || '').replace(/\D/g, '');
   if (cleanPhone.length < 10 || cleanPhone.length > 13) {
+    console.log(`[autopilot] Skipping ${business.name}: invalid phone "${business.phone}"`);
     return false;
   }
 
@@ -346,14 +347,17 @@ async function processAutopilotLead(
 
   // Generate message
   const city = campaign.location.split(',')[0] || campaign.location;
+  console.log(`[autopilot] Generating message for ${business.name}...`);
   const proposalMessage = await generateProposalMessage({
     business_name: business.name,
     business_type: campaign.category,
     city,
     sender_name: 'Equipe WACRM',
   });
+  console.log(`[autopilot] Message generated for ${business.name}`);
 
   // Create lead
+  console.log(`[autopilot] Saving lead for ${business.name}...`);
   const { data: lead, error: leadError } = await db
     .from('captured_leads')
     .insert({
