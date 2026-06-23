@@ -377,13 +377,15 @@ async function processLocationCategory(
 export async function runCNPJAutopilot(
   accountId: string,
   userId: string,
-  storagePath: string,
+  storagePaths: string | string[],
   targetLeads: number = 100,
   fileName?: string
 ): Promise<void> {
+  const paths = Array.isArray(storagePaths) ? storagePaths : [storagePaths];
+
   console.log(`[cnpj-autopilot] Starting CNPJ autopilot for account ${accountId}`);
   console.log(`[cnpj-autopilot] Target: ${targetLeads} leads`);
-  console.log(`[cnpj-autopilot] Storage path: ${storagePath}`);
+  console.log(`[cnpj-autopilot] Files: ${paths.length}`);
 
   const db = getSupabaseAdmin();
 
@@ -416,8 +418,8 @@ export async function runCNPJAutopilot(
       total_found: 0,
       total_without_website: 0,
       total_contacted: 0,
-      storage_path: storagePath,
-      file_name: fileName || storagePath.split('/').pop(),
+      storage_path: paths[0],
+      file_name: fileName || paths[0].split('/').pop(),
     })
     .select()
     .single();
@@ -429,22 +431,33 @@ export async function runCNPJAutopilot(
 
   console.log(`[cnpj-autopilot] Campaign created: ${campaign.id}`);
 
-  // Download JSONL file from Supabase Storage
-  const { data: fileData, error: downloadError } = await db.storage
-    .from('cnpj-files')
-    .download(storagePath);
+  // Download all files and concatenate lines
+  let allLines: string[] = [];
 
-  if (downloadError || !fileData) {
-    console.error('[cnpj-autopilot] Failed to download file:', downloadError);
+  for (const path of paths) {
+    const { data: fileData, error: downloadError } = await db.storage
+      .from('cnpj-files')
+      .download(path);
+
+    if (downloadError || !fileData) {
+      console.error(`[cnpj-autopilot] Failed to download ${path}:`, downloadError);
+      continue;
+    }
+
+    const content = await fileData.text();
+    const lines = content.split('\n').filter(line => line.trim());
+    allLines = allLines.concat(lines);
+    console.log(`[cnpj-autopilot] Loaded ${lines.length} leads from ${path.split('/').pop()}`);
+  }
+
+  if (allLines.length === 0) {
+    console.error('[cnpj-autopilot] No leads found in any file');
     await db
       .from('lead_campaigns')
       .update({ status: 'failed', updated_at: new Date().toISOString() })
       .eq('id', campaign.id);
     return;
   }
-
-  const fileContent = await fileData.text();
-  const allLines = fileContent.split('\n').filter(line => line.trim());
 
   // Get last processed line from config
   const { data: config } = await db
@@ -456,7 +469,7 @@ export async function runCNPJAutopilot(
   const startLine = (config as any)?.last_processed_line || 0;
   const lines = allLines.slice(startLine);
 
-  console.log(`[cnpj-autopilot] Loaded ${allLines.length} total leads, starting from line ${startLine}`);
+  console.log(`[cnpj-autopilot] Total: ${allLines.length} leads, starting from line ${startLine}`);
   console.log(`[cnpj-autopilot] Processing ${lines.length} remaining leads`);
 
   let sent = 0;

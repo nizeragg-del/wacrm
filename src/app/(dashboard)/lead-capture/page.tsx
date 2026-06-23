@@ -333,27 +333,44 @@ export default function LeadCapturePage() {
         return;
       }
 
-      // Upload file to Supabase Storage
       const userId = session.user.id;
       const timestamp = Date.now();
-      const storagePath = `${userId}/${timestamp}_${cnpjFile.name}`;
+      const baseName = cnpjFile.name.replace(/\.[^.]+$/, '');
 
-      toast.info('Enviando arquivo...');
+      toast.info('Lendo arquivo...');
 
-      const { error: uploadError } = await supabase.storage
-        .from('cnpj-files')
-        .upload(storagePath, cnpjFile, {
-          contentType: 'application/x-ndjson',
-          upsert: false,
-        });
+      const text = await cnpjFile.text();
+      const allLines = text.split('\n').filter(l => l.trim());
+      const CHUNK_SIZE = 10000;
+      const totalChunks = Math.ceil(allLines.length / CHUNK_SIZE);
 
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        toast.error(`Erro ao enviar arquivo: ${uploadError.message}`);
-        return;
+      toast.info(`${allLines.length} leads encontrados. Enviando em ${totalChunks} partes...`);
+
+      const storagePaths: string[] = [];
+
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = allLines.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE).join('\n');
+        const chunkPath = `${userId}/${timestamp}_${baseName}_part${i + 1}.jsonl`;
+        const chunkBlob = new Blob([chunk], { type: 'application/x-ndjson' });
+
+        const { error: uploadError } = await supabase.storage
+          .from('cnpj-files')
+          .upload(chunkPath, chunkBlob, {
+            contentType: 'application/x-ndjson',
+            upsert: false,
+          });
+
+        if (uploadError) {
+          console.error('Upload error on chunk', i + 1, uploadError);
+          toast.error(`Erro ao enviar parte ${i + 1}: ${uploadError.message}`);
+          return;
+        }
+
+        storagePaths.push(chunkPath);
+        toast.info(`Parte ${i + 1}/${totalChunks} enviada`);
       }
 
-      toast.info('Arquivo enviado! Iniciando processamento...');
+      toast.info('Arquivo(s) enviado(s)! Iniciando processamento...');
 
       const response = await fetch('/api/lead-capture/cnpj-autopilot', {
         method: 'POST',
@@ -362,7 +379,7 @@ export default function LeadCapturePage() {
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          storagePath,
+          storagePaths,
           fileName: cnpjFile.name,
           targetLeads: 100,
         }),
@@ -375,7 +392,6 @@ export default function LeadCapturePage() {
 
       toast.success('CNPJ Autopilot iniciado! Verifique os logs.');
       setCnpjFile(null);
-      // Reset file input
       const fileInput = document.getElementById('cnpj-file-input') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
       fetchCampaigns();
