@@ -87,6 +87,9 @@ export default function LeadCapturePage() {
     follow_up_delay_hours: 24,
   });
 
+  // CNPJ Autopilot state
+  const [cnpjLoading, setCnpjLoading] = useState(false);
+
   const [newCampaign, setNewCampaign] = useState({
     name: '',
     location: '',
@@ -313,6 +316,40 @@ export default function LeadCapturePage() {
     }
   }
 
+  async function runCNPJAutopilot() {
+    setCnpjLoading(true);
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        toast.error('Não autenticado');
+        return;
+      }
+
+      const response = await fetch('/api/lead-capture/cnpj-autopilot', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          filePath: 'scripts/leads-export.jsonl',
+          targetLeads: 100,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Falha ao executar CNPJ autopilot');
+
+      toast.success('CNPJ Autopilot iniciado! Verifique os logs.');
+      fetchCampaigns();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao executar CNPJ autopilot');
+    } finally {
+      setCnpjLoading(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -388,6 +425,51 @@ export default function LeadCapturePage() {
                   ? new Date(autopilot.last_run_at).toLocaleString('pt-BR')
                   : 'Nunca'}
               </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* CNPJ Autopilot Card */}
+      <Card className="bg-slate-900 border-slate-800">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Search className="h-5 w-5 text-blue-400" />
+                CNPJ Autopilot
+              </CardTitle>
+              <CardDescription className="text-slate-400">
+                Importe leads da base de dados do governo e envie propostas
+              </CardDescription>
+            </div>
+            <Button
+              onClick={runCNPJAutopilot}
+              disabled={cnpjLoading}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {cnpjLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="mr-2 h-4 w-4" />
+              )}
+              Executar CNPJ
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <p className="text-sm text-slate-400">Arquivo</p>
+              <p className="text-white font-medium">8.192 leads</p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-400">Meta</p>
+              <p className="text-white font-medium">100 leads/execução</p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-400">Fonte</p>
+              <p className="text-white font-medium">Receita Federal</p>
             </div>
           </div>
         </CardContent>
