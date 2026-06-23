@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { callWithRotation } from './api-rotation';
 import { SALES_AGENT_PROMPT } from '@/lib/ai-agent/sales-prompt';
-import type { LeadCampaign } from './types';
 
 function getSupabaseAdmin() {
   return createClient(
@@ -98,8 +97,6 @@ export async function handleSalesConversation(
   messageText: string,
   leadId?: string
 ): Promise<string | null> {
-  const db = getSupabaseAdmin();
-
   // Get or create conversation state
   const state = await getOrCreateConversationState(accountId, contactId, leadId);
 
@@ -192,10 +189,8 @@ function parseAgentReply(reply: string): { cleanReply: string; actions: string[]
 async function executeAction(
   state: ConversationState,
   action: string,
-  accountId: string
+  _accountId: string
 ): Promise<void> {
-  const db = getSupabaseAdmin();
-
   switch (action) {
     case 'GENERATE_WEBSITE':
       // Update status to website_generated

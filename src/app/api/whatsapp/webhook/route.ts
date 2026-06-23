@@ -920,15 +920,27 @@ async function processMessage(
 
   // AI agent fallback: when no flow consumed the message, let the AI
   // respond with a humanized reply using Gemini + CRM context.
+  // Only activate for leads from lead capture system (not personal contacts).
   // Fire-and-forget — must not block the webhook response.
   if (!flowConsumed && contentText && aiAgentEnabled) {
-    handleAiAgent({
-      accountId,
-      userId: configOwnerUserId,
-      contactId: contactRecord.id,
-      conversationId: conversation.id,
-      messageText: contentText,
-    }).catch((err) => console.error('[ai-agent] dispatch failed:', err))
+    // Check if this contact is a lead from lead capture system
+    const { data: isLead } = await supabaseAdmin()
+      .from('captured_leads')
+      .select('id')
+      .eq('account_id', accountId)
+      .eq('phone', contactRecord.phone || '')
+      .maybeSingle()
+
+    // Only activate AI agent for leads from our lead capture system
+    if (isLead) {
+      handleAiAgent({
+        accountId,
+        userId: configOwnerUserId,
+        contactId: contactRecord.id,
+        conversationId: conversation.id,
+        messageText: contentText,
+      }).catch((err) => console.error('[ai-agent] dispatch failed:', err))
+    }
   }
 
   // Fire any automations that react to this webhook event. All dispatches

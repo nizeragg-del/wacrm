@@ -1,6 +1,7 @@
 import { callGemini } from '@/lib/website-generator/gemini'
 import { fetchCrmContext, formatCrmContext } from './crm-context'
 import { AGENT_SYSTEM_PROMPT } from './system-prompt'
+import { handleSalesConversation } from '@/lib/lead-capture/sales-agent'
 
 interface HandleAiAgentArgs {
   accountId: string
@@ -12,6 +13,43 @@ interface HandleAiAgentArgs {
 
 export async function handleAiAgent(args: HandleAiAgentArgs): Promise<boolean> {
   try {
+    // Check if this contact is a lead from lead capture
+    const { createClient } = await import('@supabase/supabase-js')
+    const db = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
+    const { data: lead } = await db
+      .from('captured_leads')
+      .select('id')
+      .eq('account_id', args.accountId)
+      .maybeSingle()
+
+    // If it's a lead, use sales agent flow
+    if (lead) {
+      const reply = await handleSalesConversation(
+        args.accountId,
+        args.contactId,
+        args.messageText,
+        lead.id
+      )
+
+      if (reply) {
+        const { engineSendText } = await import('@/lib/flows/meta-send')
+        await engineSendText({
+          accountId: args.accountId,
+          userId: args.userId,
+          conversationId: args.conversationId,
+          contactId: args.contactId,
+          text: reply,
+        })
+        return true
+      }
+      return false
+    }
+
+    // Otherwise, use generic AI agent
     const ctx = await fetchCrmContext(
       args.accountId,
       args.contactId,
