@@ -1,0 +1,440 @@
+import { createClient } from '@supabase/supabase-js';
+import { geocodeLocation } from './nominatim';
+import { searchBusinesses, filterWithoutWebsite } from './overpass';
+import { generateProposalMessage } from './proposal-generator';
+import { DEFAULT_CONFIG, type AutopilotConfig } from './config';
+import type { LeadCampaign, OSMBusiness } from './types';
+
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
+export async function getAutopilotConfig(accountId: string): Promise<AutopilotConfig | null> {
+  const db = getSupabaseAdmin();
+
+  const { data, error } = await db
+    .from('autopilot_config')
+    .select('*')
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data as AutopilotConfig;
+}
+
+export async function createAutopilotConfig(
+  accountId: string,
+  userId: string,
+  overrides: Partial<AutopilotConfig> = {}
+): Promise<AutopilotConfig> {
+  const db = getSupabaseAdmin();
+
+  const config = {
+    account_id: accountId,
+    user_id: userId,
+    is_active: false,
+    location: DEFAULT_CONFIG.locations[0],
+    locations: DEFAULT_CONFIG.locations,
+    categories: DEFAULT_CONFIG.categories,
+    radius_meters: DEFAULT_CONFIG.radius_meters,
+    max_messages_per_day: DEFAULT_CONFIG.max_messages_per_day,
+    follow_up_enabled: DEFAULT_CONFIG.follow_up_enabled,
+    follow_up_delay_hours: DEFAULT_CONFIG.follow_up_delay_hours,
+    last_run_at: null,
+    ...overrides,
+  };
+
+  const { data, error } = await db
+    .from('autopilot_config')
+    .upsert(config, { onConflict: 'account_id' })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to create autopilot config: ${error.message}`);
+  }
+
+  return data as AutopilotConfig;
+}
+
+export async function updateAutopilotConfig(
+  accountId: string,
+  updates: Partial<AutopilotConfig>
+): Promise<void> {
+  const db = getSupabaseAdmin();
+
+  const { error } = await db
+    .from('autopilot_config')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('account_id', accountId);
+
+  if (error) {
+    throw new Error(`Failed to update autopilot config: ${error.message}`);
+  }
+}
+
+export async function startAutopilot(accountId: string): Promise<void> {
+  await updateAutopilotConfig(accountId, { is_active: true });
+  
+  // Run autopilot in background
+  runAutopilotCycle(accountId).catch((error) => {
+    console.error('[autopilot] cycle failed:', error);
+  });
+}
+
+export async function stopAutopilot(accountId: string): Promise<void> {
+  await updateAutopilotConfig(accountId, { is_active: false });
+}
+
+export async function runAutopilotCycle(accountId: string): Promise<void> {
+  const config = await getAutopilotConfig(accountId);
+  
+  if (!config || !config.is_active) {
+    console.log('[autopilot] not active, skipping cycle');
+    return;
+  }
+
+  const db = getSupabaseAdmin();
+
+  // Check daily limit
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const { count: messagesToday } = await db
+    .from('captured_leads')
+    .select('id', { count: 'exact', head: true })
+    .eq('account_id', accountId)
+    .eq('status', 'contacted')
+    .gte('created_at', today.toISOString());
+
+  if ((messagesToday || 0) >= config.max_messages_per_day) {
+    console.log(`[autopilot] daily limit reached: ${messagesToday}/${config.max_messages_per_day}`);
+    return;
+  }
+
+  const remainingMessages = config.max_messages_per_day - (messagesToday || 0);
+
+  // Process each location
+  for (const location of config.locations) {
+    if (!config.is_active) break;
+
+    // Check limit again
+    const { count: currentCount } = await db
+      .from('captured_leads')
+      .select('id', { count: 'exact', head: true })
+      .eq('account_id', accountId)
+      .eq('status', 'contacted')
+      .gte('created_at', today.toISOString());
+
+    if ((currentCount || 0) >= config.max_messages_per_day) {
+      console.log('[autopilot] daily limit reached, stopping');
+      break;
+    }
+
+    // Process each category
+    for (const category of config.categories) {
+      if (!config.is_active) break;
+
+      console.log(`[autopilot] processing ${category} in ${location}`);
+
+      try {
+        await processLocationCategory(
+          accountId,
+          config.user_id,
+          location,
+          category,
+          config.radius_meters,
+          remainingMessages - (currentCount || 0)
+        );
+      } catch (error) {
+        console.error(`[autopilot] failed to process ${category} in ${location}:`, error);
+      }
+
+      // Longer delay between categories to avoid rate limits (10 seconds)
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+    }
+
+    // Longer delay between locations (30 seconds)
+    await new Promise((resolve) => setTimeout(resolve, 30000));
+  }
+
+  // Update last run time
+  await updateAutopilotConfig(accountId, {
+    last_run_at: new Date().toISOString(),
+  });
+
+  console.log('[autopilot] cycle completed');
+}
+
+async function processLocationCategory(
+  accountId: string,
+  userId: string,
+  location: string,
+  category: string,
+  radius: number,
+  maxMessages: number
+): Promise<void> {
+  const db = getSupabaseAdmin();
+
+  // Geocode location
+  const geocode = await geocodeLocation(location);
+
+  // Add delay for rate limits
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  // Search businesses
+  const businesses = await searchBusinesses(geocode.lat, geocode.lon, category, radius);
+  const withoutWebsite = filterWithoutWebsite(businesses);
+
+  if (withoutWebsite.length === 0) {
+    console.log(`[autopilot] no businesses without website found for ${category} in ${location}`);
+    return;
+  }
+
+  // Create campaign
+  const { data: campaign, error: campaignError } = await db
+    .from('lead_campaigns')
+    .insert({
+      account_id: accountId,
+      user_id: userId,
+      name: `Auto: ${category} - ${location.split(',')[0]}`,
+      location,
+      category,
+      radius_meters: radius,
+      status: 'running',
+      total_found: businesses.length,
+      total_without_website: withoutWebsite.length,
+      total_contacted: 0,
+    })
+    .select()
+    .single();
+
+  if (campaignError || !campaign) {
+    console.error('[autopilot] failed to create campaign:', campaignError);
+    return;
+  }
+
+  const campaignData = campaign as LeadCampaign;
+  let contacted = 0;
+
+  // Process leads
+  for (const business of withoutWebsite) {
+    if (contacted >= maxMessages) break;
+
+    try {
+      const result = await processAutopilotLead(campaignData, business);
+      if (result) contacted++;
+    } catch (error) {
+      console.error(`[autopilot] failed to process lead:`, error);
+    }
+
+    // Delay between leads
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  // Update campaign status
+  await db
+    .from('lead_campaigns')
+    .update({
+      status: 'completed',
+      total_contacted: contacted,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', campaign.id);
+}
+
+async function processAutopilotLead(
+  campaign: LeadCampaign,
+  business: OSMBusiness
+): Promise<boolean> {
+  const db = getSupabaseAdmin();
+
+  // Validate phone
+  const cleanPhone = (business.phone || '').replace(/\D/g, '');
+  if (cleanPhone.length < 10 || cleanPhone.length > 13) {
+    return false;
+  }
+
+  // Check if campaign still exists (might have been deleted)
+  const { data: campaignExists } = await db
+    .from('lead_campaigns')
+    .select('id')
+    .eq('id', campaign.id)
+    .maybeSingle();
+
+  if (!campaignExists) {
+    console.warn(`[autopilot] Campaign ${campaign.id} no longer exists, skipping lead`);
+    return false;
+  }
+
+  // Check for duplicates
+  const { data: existing } = await db
+    .from('captured_leads')
+    .select('id')
+    .eq('account_id', campaign.account_id)
+    .eq('phone', business.phone)
+    .in('status', ['contacted', 'converted'])
+    .maybeSingle();
+
+  if (existing) {
+    console.log(`[autopilot] phone ${cleanPhone} already contacted, skipping`);
+    return false;
+  }
+
+  // Check if exists in this campaign
+  const { data: existingInCampaign } = await db
+    .from('captured_leads')
+    .select('id')
+    .eq('campaign_id', campaign.id)
+    .eq('phone', business.phone)
+    .maybeSingle();
+
+  if (existingInCampaign) {
+    return false;
+  }
+
+  // Create or find contact
+  const { data: existingContact } = await db
+    .from('contacts')
+    .select('id')
+    .eq('account_id', campaign.account_id)
+    .eq('phone', business.phone)
+    .maybeSingle();
+
+  let contactId = existingContact?.id || null;
+
+  if (!contactId) {
+    const { data: newContact } = await db
+      .from('contacts')
+      .insert({
+        account_id: campaign.account_id,
+        user_id: campaign.user_id,
+        phone: business.phone,
+        name: business.name,
+        company: business.name,
+      })
+      .select('id')
+      .single();
+
+    contactId = newContact?.id || null;
+  }
+
+  // Generate message
+  const city = campaign.location.split(',')[0] || campaign.location;
+  const proposalMessage = await generateProposalMessage({
+    business_name: business.name,
+    business_type: campaign.category,
+    city,
+    sender_name: 'Equipe WACRM',
+  });
+
+  // Create lead
+  const { data: lead, error: leadError } = await db
+    .from('captured_leads')
+    .insert({
+      campaign_id: campaign.id,
+      account_id: campaign.account_id,
+      contact_id: contactId,
+      business_name: business.name,
+      business_type: campaign.category,
+      address: business.address,
+      phone: business.phone,
+      email: business.email,
+      osm_id: business.osm_id,
+      latitude: business.lat,
+      longitude: business.lon,
+      has_website: false,
+      website_url: null,
+      status: 'pending',
+      proposal_message: proposalMessage,
+    })
+    .select()
+    .single();
+
+  if (leadError || !lead) {
+    console.error('[autopilot] failed to save lead:', leadError);
+    return false;
+  }
+
+  // Send WhatsApp
+  try {
+    const messageId = await sendWhatsAppMessage(
+      campaign.account_id,
+      business.phone || '',
+      proposalMessage
+    );
+
+    if (messageId === null) {
+      return false;
+    }
+
+    await db
+      .from('captured_leads')
+      .update({
+        status: 'contacted',
+        whatsapp_message_id: messageId,
+      })
+      .eq('id', lead.id);
+
+    await db.rpc('increment_campaign_contacted', {
+      p_campaign_id: campaign.id,
+    });
+
+    return true;
+  } catch (error) {
+    console.error('[autopilot] failed to send WhatsApp:', error);
+    return false;
+  }
+}
+
+async function sendWhatsAppMessage(
+  accountId: string,
+  phone: string,
+  message: string
+): Promise<string | null> {
+  const db = getSupabaseAdmin();
+
+  const { data: config } = await db
+    .from('whatsapp_config')
+    .select('phone_number_id, access_token')
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  if (!config) {
+    throw new Error('WhatsApp not configured');
+  }
+
+  const evolutionUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+  const cleanPhone = phone.replace(/\D/g, '');
+  const jid = `${cleanPhone}@s.whatsapp.net`;
+
+  const response = await fetch(`${evolutionUrl}/message/sendText/${config.phone_number_id}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: process.env.EVOLUTION_API_KEY || '',
+    },
+    body: JSON.stringify({
+      number: jid,
+      text: message,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (data?.response?.message?.[0]?.exists === false) {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return data?.key?.id || data?.messageId || `evo-${Date.now()}`;
+}

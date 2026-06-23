@@ -1060,6 +1060,7 @@ async function advanceFromNodeKey(
     }
     if (node.node_type === "send_buttons") {
       // Persist current_node_key BEFORE sending to avoid race condition
+      const advanced = await advanceCurrentNodeKey(
         db,
         run.id,
         run.current_node_key,
@@ -1070,9 +1071,9 @@ async function advanceFromNodeKey(
           reason: "lost_race_during_advance",
         });
       }
-      return { outcome: "advanced" };
       await sendButtonsAndSuspend(db, run, node);
       return { outcome: "advanced" };
+    }
     if (node.node_type === "send_list") {
       // Persist current_node_key BEFORE sending to avoid race condition
       const advanced = await advanceCurrentNodeKey(
@@ -1086,9 +1087,9 @@ async function advanceFromNodeKey(
           reason: "lost_race_during_advance",
         });
       }
-      return { outcome: "advanced" };
       await sendListAndSuspend(db, run, node);
       return { outcome: "advanced" };
+    }
     if (node.node_type === "handoff") {
       await executeHandoff(db, run, node);
       return { outcome: "handed_off" };

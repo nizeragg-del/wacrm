@@ -13,6 +13,7 @@ import {
   LogOut,
   MessageSquare,
   Radio,
+  Search,
   Settings,
   Shield,
   User,
@@ -90,6 +91,7 @@ const navItems: NavItem[] = [
   { href: "/broadcasts", label: "Transmissões", icon: Radio },
   { href: "/automations", label: "Automações", icon: Zap },
   { href: "/flows", label: "Flows", icon: Workflow, beta: true },
+  { href: "/lead-capture", label: "Captação de Clientes", icon: Search },
 ];
 
 const bottomNavItems = [
