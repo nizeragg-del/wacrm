@@ -20,11 +20,26 @@ export async function handleAiAgent(args: HandleAiAgentArgs): Promise<boolean> {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
+    // Get contact phone to find the specific lead
+    const { data: contact } = await db
+      .from('contacts')
+      .select('phone')
+      .eq('id', args.contactId)
+      .maybeSingle()
+
     const { data: lead } = await db
       .from('captured_leads')
       .select('id')
       .eq('account_id', args.accountId)
+      .eq('contact_id', args.contactId)
       .maybeSingle()
+      // Fallback: match by phone if contact_id link is missing
+      ?? (contact?.phone ? await db
+        .from('captured_leads')
+        .select('id')
+        .eq('account_id', args.accountId)
+        .eq('phone', contact.phone)
+        .maybeSingle() : { data: null })
 
     // If it's a lead, use sales agent flow
     if (lead) {

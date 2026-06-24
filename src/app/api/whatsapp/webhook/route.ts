@@ -258,7 +258,8 @@ async function processEvolutionWebhook(body: any, config: any) {
       contact,
       config.account_id,
       config.user_id,
-      decryptedAccessToken
+      decryptedAccessToken,
+      config.ai_agent_enabled ?? false
     )
   }
 

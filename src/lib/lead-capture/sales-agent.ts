@@ -192,45 +192,19 @@ async function executeAction(
   _accountId: string
 ): Promise<void> {
   switch (action) {
+    case 'HANDOFF':
+      await updateConversationState(state.id, {
+        flow_status: 'awaiting_human',
+      });
+      console.log(`[sales-agent] HANDOFF: contact ${state.contact_id} ready for human follow-up`);
+      break;
+
     case 'GENERATE_WEBSITE':
-      // Update status to website_generated
-      await updateConversationState(state.id, {
-        flow_status: 'website_generated',
-      });
-      // TODO: Call website generator
-      break;
-
     case 'SEND_PREVIEW':
-      // Update status to preview_sent
-      await updateConversationState(state.id, {
-        flow_status: 'preview_sent',
-      });
-      // TODO: Send screenshot
-      break;
-
     case 'SEND_PAYMENT':
-      // Update status to payment_sent
-      await updateConversationState(state.id, {
-        flow_status: 'payment_sent',
-        payment_status: 'pending',
-      });
-      // TODO: Create PIX payment
-      break;
-
     case 'DEPLOY':
-      // Update status to deploying
-      await updateConversationState(state.id, {
-        flow_status: 'deploying',
-      });
-      // TODO: Deploy to GitHub + Vercel
-      break;
-
     case 'SEND_UPSELL':
-      // Update status to upsell_sent
-      await updateConversationState(state.id, {
-        flow_status: 'upsell_sent',
-        upsell_sent_at: new Date().toISOString(),
-      });
+      console.warn(`[sales-agent] Ignored deprecated action: ${action}`);
       break;
 
     default:
