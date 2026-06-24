@@ -834,6 +834,10 @@ export async function processOneCNPJLead(
 
       // Send WhatsApp
       try {
+        // Random delay 2-8 seconds to look natural
+        const delay = 2000 + Math.random() * 6000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+
         const result = await sendTextMessage({
           phoneNumberId: whatsappConfig.phone_number_id,
           accessToken,

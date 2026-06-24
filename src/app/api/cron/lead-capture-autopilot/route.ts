@@ -78,6 +78,29 @@ export async function GET(request: Request) {
     console.log(`[cron] CNPJ job query result:`, job ? `found (${job.cnpj_job_status})` : 'not found');
 
     if (job && job.cnpj_storage_paths && job.user_id) {
+      // Rate limit: check if last contact was too recent (min 5 min gap)
+      const { data: lastLead } = await db
+        .from('captured_leads')
+        .select('created_at')
+        .eq('account_id', job.account_id)
+        .eq('status', 'contacted')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lastLead?.created_at) {
+        const lastContactTime = new Date(lastLead.created_at).getTime();
+        const now = Date.now();
+        const fiveMinMs = 5 * 60 * 1000;
+
+        if (now - lastContactTime < fiveMinMs) {
+          const waitMin = Math.ceil((fiveMinMs - (now - lastContactTime)) / 60000);
+          console.log(`[cron] Rate limit: last contact ${Math.round((now - lastContactTime) / 60000)}m ago, waiting ${waitMin}m more`);
+          results.cnpjProcessed = 0;
+          return NextResponse.json(results);
+        }
+      }
+
       // Mark as running on first pickup
       if (job.cnpj_job_status === 'pending') {
         await db
